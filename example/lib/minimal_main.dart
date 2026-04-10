@@ -49,7 +49,7 @@ class MinimalChatPage extends StatefulWidget {
 }
 
 class _MinimalChatPageState extends State<MinimalChatPage> {
-  late final ClaudeTransport _transport;
+  late final GenuiXTransport _transport;
   late final SurfaceController _controller;
   late final Conversation _conversation;
 
@@ -62,7 +62,7 @@ class _MinimalChatPageState extends State<MinimalChatPage> {
   @override
   void initState() {
     super.initState();
-    _transport = ClaudeTransport(
+    _transport = GenuiXTransport(
       apiKey: widget.apiKey,
       catalog: weatherCatalog,
       model: 'claude-sonnet-4-6',

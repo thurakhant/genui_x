@@ -1,3 +1,12 @@
+## 0.0.6
+
+* Rename `ClaudeTransport` → `GenuiXTransport`, `ClaudeConfig` → `GenuiXConfig`, `ClaudeStreamFormat` → `GenuiXStreamFormat` — names no longer imply Claude-only.
+* Rename `ClaudeAuthException` → `GenuiXAuthError` and `ClaudeApiException` → `GenuiXApiError` for provider-neutral naming.
+* Add `cancel()` to `ClaudeTransport` — abort an in-flight request and reset `isLoading`.
+* Add `clearHistory()` to `ClaudeTransport` — reset conversation history without creating a new transport.
+* Add `debug: bool` to `ClaudeConfig` and `ClaudeTransport` — prints request URL, model, status code, and errors via `debugPrint`.
+* Add transport-level tests: error handling, streaming (Anthropic + OpenAI), `isLoading` state, `cancel()`, `clearHistory()`.
+
 ## 0.0.5
 
 * Add `systemPromptFragments` to `ClaudeTransport` and `ClaudeConfig` — inject persona, domain restrictions, or date context into the system prompt.

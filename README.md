@@ -12,11 +12,11 @@ Use Anthropic's Claude as the AI engine for genui — no changes to the core fra
 
 ## What it does
 
-`genui_x` provides `ClaudeTransport`, a drop-in implementation of genui's `Transport` interface. It connects Claude's Messages API to the genui rendering pipeline so that Claude can dynamically build Flutter UIs from your widget catalog.
+`genui_x` provides `GenuiXTransport`, a drop-in implementation of genui's `Transport` interface. It connects Claude's Messages API to the genui rendering pipeline so that Claude can dynamically build Flutter UIs from your widget catalog.
 
 **How it works:**
 
-1. `ClaudeTransport` sends the full A2UI widget schema to Claude as a system prompt.
+1. `GenuiXTransport` sends the full A2UI widget schema to Claude as a system prompt.
 2. Claude responds with A2UI JSON blocks (e.g. `createSurface`, `updateComponents`) embedded in its text output.
 3. genui's built-in `A2uiParserTransformer` extracts these blocks and renders the widgets — automatically.
 
@@ -74,7 +74,7 @@ final myCatalog = Catalog(
 import 'package:genui/genui.dart';
 import 'package:genui_x/genui_x.dart';
 
-final transport = ClaudeTransport(
+final transport = GenuiXTransport(
   apiKey: 'sk-ant-your-key-here',  // Never hardcode in production
   catalog: myCatalog,
   // model: 'claude-sonnet-4-6',   // Optional — default is claude-haiku-4-5
@@ -122,7 +122,7 @@ If your proxy uses Authorization headers or a custom path, configure the
 transport like this:
 
 ```dart
-final transport = ClaudeTransport(
+final transport = GenuiXTransport(
   apiKey: 'your-key',
   catalog: myCatalog,
   baseUrl: 'https://your-proxy.example.com',
@@ -135,14 +135,14 @@ final transport = ClaudeTransport(
 For OpenAI-style streaming endpoints, set the stream format and path:
 
 ```dart
-final transport = ClaudeTransport(
+final transport = GenuiXTransport(
   apiKey: 'your-key',
   catalog: myCatalog,
   baseUrl: 'https://your-proxy.example.com',
   endpointPath: '/v1/chat/completions',
   apiKeyHeader: 'authorization',
   apiKeyPrefix: 'Bearer ',
-  streamFormat: ClaudeStreamFormat.openai,
+  streamFormat: GenuiXStreamFormat.openai,
   requestBodyOverrides: const {
     'response_format': {'type': 'json_object'},
   },

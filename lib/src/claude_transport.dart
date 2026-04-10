@@ -21,7 +21,7 @@ import 'sse_parser.dart';
 /// ## Usage
 ///
 /// ```dart
-/// final transport = ClaudeTransport(
+/// final transport = GenuiXTransport(
 ///   apiKey: 'your-api-key',
 ///   catalog: myCatalog,
 /// );
@@ -32,14 +32,14 @@ import 'sse_parser.dart';
 ///   transport: transport,
 /// );
 /// ```
-class ClaudeTransport implements Transport {
-  /// Creates a [ClaudeTransport].
+class GenuiXTransport implements Transport {
+  /// Creates a [GenuiXTransport].
   ///
   /// [apiKey] is required. All other parameters are optional.
   /// [catalog] defines the UI components the AI can generate.
   /// [model] defaults to `claude-haiku-4-5-20251001` for cost efficiency.
   /// [baseUrl] can be overridden to route through your own proxy.
-  ClaudeTransport({
+  GenuiXTransport({
     required String apiKey,
     required Catalog catalog,
     String? model,
@@ -50,10 +50,11 @@ class ClaudeTransport implements Transport {
     String apiKeyHeader = 'x-api-key',
     String apiKeyPrefix = '',
     Map<String, String> headers = const <String, String>{},
-    ClaudeStreamFormat streamFormat = ClaudeStreamFormat.anthropic,
+    GenuiXStreamFormat streamFormat = GenuiXStreamFormat.anthropic,
     Map<String, Object?> requestBodyOverrides = const <String, Object?>{},
     List<String> systemPromptFragments = const <String>[],
-  })  : _config = ClaudeConfig(
+    bool debug = false,
+  })  : _config = GenuiXConfig(
           apiKey: apiKey,
           model: model ?? 'claude-haiku-4-5-20251001',
           baseUrl: baseUrl ?? 'https://api.anthropic.com',
@@ -65,12 +66,13 @@ class ClaudeTransport implements Transport {
           streamFormat: streamFormat,
           requestBodyOverrides: requestBodyOverrides,
           systemPromptFragments: systemPromptFragments,
+          debug: debug,
         ),
         _catalog = catalog,
         _httpClient = httpClient ?? http.Client(),
         _adapter = A2uiTransportAdapter();
 
-  final ClaudeConfig _config;
+  final GenuiXConfig _config;
   final Catalog _catalog;
   final http.Client _httpClient;
   final A2uiTransportAdapter _adapter;
@@ -85,6 +87,8 @@ class ClaudeTransport implements Transport {
   // Conversation history in Claude's messages format
   final List<Map<String, dynamic>> _history = [];
 
+  StreamSubscription<String>? _currentStream;
+
   // Cached system prompt (built once from catalog + user fragments)
   late final String _systemPrompt = PromptBuilder.chat(
     catalog: _catalog,
@@ -97,38 +101,68 @@ class ClaudeTransport implements Transport {
   @override
   Stream<String> get incomingText => _adapter.incomingText;
 
+  /// Cancels any in-flight request.
+  ///
+  /// Safe to call even when no request is active. Resets [isLoading] to false.
+  void cancel() {
+    _currentStream?.cancel();
+    _currentStream = null;
+    isLoading.value = false;
+  }
+
+  /// Clears the conversation history.
+  ///
+  /// Call this to start a fresh conversation without creating a new transport.
+  void clearHistory() => _history.clear();
+
   @override
   Future<void> sendRequest(ChatMessage message) async {
-    // Add user message to history
     _history.add(_toClaudeMessage(message));
-
     isLoading.value = true;
+
     final buffer = StringBuffer();
-    try {
-      await for (final chunk in _streamClaude()) {
+    final completer = Completer<void>();
+
+    _currentStream = _streamClaude().listen(
+      (chunk) {
         _adapter.addChunk(chunk);
         buffer.write(chunk);
-      }
-    } on ClaudeAuthException {
-      rethrow;
-    } on ClaudeApiException catch (e) {
-      _adapter.addChunk('\n\nSorry, I encountered an error: ${e.message}');
-    } catch (e) {
-      _adapter.addChunk('\n\nSorry, I encountered an unexpected error.');
-    } finally {
-      isLoading.value = false;
-    }
+      },
+      onError: (Object e, StackTrace st) {
+        if (e is GenuiXAuthError) {
+          completer.completeError(e, st);
+        } else if (e is GenuiXApiError) {
+          _adapter.addChunk('\n\nSorry, I encountered an error: ${e.message}');
+          completer.complete();
+        } else {
+          _adapter.addChunk('\n\nSorry, I encountered an unexpected error.');
+          completer.complete();
+        }
+      },
+      onDone: () {
+        if (!completer.isCompleted) completer.complete();
+      },
+      cancelOnError: true,
+    );
 
-    // Add assistant response to history for multi-turn context
-    final assistantText = buffer.toString();
-    if (assistantText.isNotEmpty) {
-      _history.add({'role': 'assistant', 'content': assistantText});
+    try {
+      await completer.future;
+    } finally {
+      _currentStream = null;
+      isLoading.value = false;
+      final assistantText = buffer.toString();
+      if (assistantText.isNotEmpty) {
+        _history.add({'role': 'assistant', 'content': assistantText});
+      }
     }
   }
 
   /// Streams text chunks from the Claude Messages API.
   Stream<String> _streamClaude() async* {
     final uri = Uri.parse(_config.baseUrl).resolve(_config.endpointPath);
+    if (_config.debug) {
+      debugPrint('[genui_x] POST $uri (model: ${_config.model})');
+    }
     final payload = <String, Object?>{
       'model': _config.model,
       'max_tokens': _config.maxTokens,
@@ -140,7 +174,7 @@ class ClaudeTransport implements Transport {
     final body = jsonEncode(payload);
 
     final headers = <String, String>{'content-type': 'application/json'};
-    if (_config.streamFormat == ClaudeStreamFormat.anthropic) {
+    if (_config.streamFormat == GenuiXStreamFormat.anthropic) {
       headers['anthropic-version'] = _config.anthropicVersion;
     }
     if (_config.apiKeyHeader.isNotEmpty) {
@@ -157,20 +191,26 @@ class ClaudeTransport implements Transport {
     try {
       response = await _httpClient.send(request);
     } catch (e) {
-      throw ClaudeApiException(0, 'Network error: $e');
+      throw GenuiXApiError(0, 'Network error: $e');
+    }
+
+    if (_config.debug) {
+      debugPrint('[genui_x] status: ${response.statusCode}');
     }
 
     if (response.statusCode == 401 || response.statusCode == 403) {
       final body = await response.stream.bytesToString();
-      throw ClaudeAuthException(response.statusCode, body);
+      if (_config.debug) debugPrint('[genui_x] auth error: $body');
+      throw GenuiXAuthError(response.statusCode, body);
     }
 
     if (response.statusCode != 200) {
       final body = await response.stream.bytesToString();
-      throw ClaudeApiException(response.statusCode, body);
+      if (_config.debug) debugPrint('[genui_x] api error: $body');
+      throw GenuiXApiError(response.statusCode, body);
     }
 
-    if (_config.streamFormat == ClaudeStreamFormat.openai) {
+    if (_config.streamFormat == GenuiXStreamFormat.openai) {
       yield* _openaiSseParser.parse(response.stream);
     } else {
       yield* _sseParser.parse(response.stream);
@@ -185,16 +225,17 @@ class ClaudeTransport implements Transport {
 
   @override
   void dispose() {
+    _currentStream?.cancel();
     _adapter.dispose();
     _httpClient.close();
     isLoading.dispose();
   }
 }
 
-/// Thrown when the Claude API returns an authentication error (401/403).
-class ClaudeAuthException implements Exception {
-  /// Creates a [ClaudeAuthException].
-  const ClaudeAuthException(this.statusCode, this.body);
+/// Thrown when the API returns an authentication error (401/403).
+class GenuiXAuthError implements Exception {
+  /// Creates a [GenuiXAuthError].
+  const GenuiXAuthError(this.statusCode, this.body);
 
   /// The HTTP status code.
   final int statusCode;
@@ -204,13 +245,13 @@ class ClaudeAuthException implements Exception {
 
   @override
   String toString() =>
-      'ClaudeAuthException($statusCode): Invalid API key or unauthorized. $body';
+      'GenuiXAuthError($statusCode): Invalid API key or unauthorized. $body';
 }
 
-/// Thrown when the Claude API returns an error response.
-class ClaudeApiException implements Exception {
-  /// Creates a [ClaudeApiException].
-  const ClaudeApiException(this.statusCode, this.message);
+/// Thrown when the API returns an error response.
+class GenuiXApiError implements Exception {
+  /// Creates a [GenuiXApiError].
+  const GenuiXApiError(this.statusCode, this.message);
 
   /// The HTTP status code. 0 for network errors.
   final int statusCode;
@@ -219,5 +260,5 @@ class ClaudeApiException implements Exception {
   final String message;
 
   @override
-  String toString() => 'ClaudeApiException($statusCode): $message';
+  String toString() => 'GenuiXApiError($statusCode): $message';
 }

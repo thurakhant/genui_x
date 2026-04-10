@@ -46,7 +46,7 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> {
-  late final ClaudeTransport _transport;
+  late final GenuiXTransport _transport;
   late final SurfaceController _controller;
   late final Conversation _conversation;
 
@@ -64,7 +64,7 @@ class _ChatPageState extends State<ChatPage> {
       'CLAUDE_BASE_URL',
       defaultValue: 'https://api.anthropic.com',
     );
-    _transport = ClaudeTransport(
+    _transport = GenuiXTransport(
       apiKey: widget.apiKey,
       catalog: weatherCatalog,
       baseUrl: baseUrl,

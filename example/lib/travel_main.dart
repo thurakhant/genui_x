@@ -49,7 +49,7 @@ class TravelChatPage extends StatefulWidget {
 }
 
 class _TravelChatPageState extends State<TravelChatPage> {
-  late final ClaudeTransport _transport;
+  late final GenuiXTransport _transport;
   late final SurfaceController _controller;
   late final Conversation _conversation;
 
@@ -71,25 +71,25 @@ class _TravelChatPageState extends State<TravelChatPage> {
       defaultValue: 'anthropic',
     );
     final streamFormat =
-        streamFormatRaw == 'openai' ? ClaudeStreamFormat.openai : ClaudeStreamFormat.anthropic;
+        streamFormatRaw == 'openai' ? GenuiXStreamFormat.openai : GenuiXStreamFormat.anthropic;
     const endpointPathEnv = String.fromEnvironment('CLAUDE_ENDPOINT_PATH');
     final endpointPath = endpointPathEnv.isEmpty
-        ? (streamFormat == ClaudeStreamFormat.openai ? '/v1/chat/completions' : '/v1/messages')
+        ? (streamFormat == GenuiXStreamFormat.openai ? '/v1/chat/completions' : '/v1/messages')
         : endpointPathEnv;
     const apiKeyHeaderEnv = String.fromEnvironment('CLAUDE_API_KEY_HEADER');
     final apiKeyHeader = apiKeyHeaderEnv.isEmpty
-        ? (streamFormat == ClaudeStreamFormat.openai ? 'authorization' : 'x-api-key')
+        ? (streamFormat == GenuiXStreamFormat.openai ? 'authorization' : 'x-api-key')
         : apiKeyHeaderEnv;
     const apiKeyPrefixEnv = String.fromEnvironment('CLAUDE_API_KEY_PREFIX');
     final apiKeyPrefix = apiKeyPrefixEnv.isEmpty
-        ? (streamFormat == ClaudeStreamFormat.openai ? 'Bearer ' : '')
+        ? (streamFormat == GenuiXStreamFormat.openai ? 'Bearer ' : '')
         : apiKeyPrefixEnv;
-    final requestBodyOverrides = streamFormat == ClaudeStreamFormat.openai
+    final requestBodyOverrides = streamFormat == GenuiXStreamFormat.openai
         ? const {
             'response_format': {'type': 'json_object'},
           }
         : const <String, Object?>{};
-    _transport = ClaudeTransport(
+    _transport = GenuiXTransport(
       apiKey: widget.apiKey,
       catalog: travelCatalog,
       baseUrl: baseUrl,

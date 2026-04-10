@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 /// Supported streaming response formats.
-enum ClaudeStreamFormat {
+enum GenuiXStreamFormat {
   /// Anthropic Messages API streaming format.
   anthropic,
 
@@ -11,9 +11,9 @@ enum ClaudeStreamFormat {
 }
 
 /// Configuration for the Claude AI adapter.
-class ClaudeConfig {
-  /// Creates a [ClaudeConfig].
-  const ClaudeConfig({
+class GenuiXConfig {
+  /// Creates a [GenuiXConfig].
+  const GenuiXConfig({
     required this.apiKey,
     this.model = 'claude-haiku-4-5-20251001',
     this.baseUrl = 'https://api.anthropic.com',
@@ -23,9 +23,10 @@ class ClaudeConfig {
     this.apiKeyHeader = 'x-api-key',
     this.apiKeyPrefix = '',
     this.headers = const <String, String>{},
-    this.streamFormat = ClaudeStreamFormat.anthropic,
+    this.streamFormat = GenuiXStreamFormat.anthropic,
     this.requestBodyOverrides = const <String, Object?>{},
     this.systemPromptFragments = const <String>[],
+    this.debug = false,
   });
 
   /// The Anthropic API key.
@@ -70,7 +71,7 @@ class ClaudeConfig {
   final Map<String, String> headers;
 
   /// The streaming response format to parse.
-  final ClaudeStreamFormat streamFormat;
+  final GenuiXStreamFormat streamFormat;
 
   /// Optional request body overrides for provider-specific features.
   ///
@@ -92,4 +93,10 @@ class ClaudeConfig {
   /// ]
   /// ```
   final List<String> systemPromptFragments;
+
+  /// Whether to print request/response debug info to the console.
+  ///
+  /// Logs the request URL, model, status code, and any errors via [debugPrint].
+  /// Useful for debugging proxy configuration issues.
+  final bool debug;
 }

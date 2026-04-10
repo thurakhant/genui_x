@@ -1,6 +1,6 @@
 name: genui_x
 description: "A Claude AI adapter for Google's genui (Generative UI) framework."
-version: 0.0.5
+version: 0.0.6
 repository: https://github.com/thurakhant/genui_x
 issue_tracker: https://github.com/thurakhant/genui_x/issues
 
