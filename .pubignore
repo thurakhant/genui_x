@@ -1,0 +1,38 @@
+# Build artifacts
+build/
+**/build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+coverage/
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Agent/tooling docs not relevant to consumers
+AGENTS.md
+**/AGENTS.md
+
+# Dev-only docs
+doc/RELEASE_CHECKLIST.md
+
+# Environment and secrets
+.env
+.env.*
+
+# OS files
+.DS_Store
+
+# Tooling configs
+.claude/
+.opencode/
+opencode.json
+.aider*
+.windsurf*
+.cursor/
+.cursorrules
