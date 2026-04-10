@@ -4,20 +4,20 @@
 [![pub points](https://img.shields.io/pub/points/genui_x.svg)](https://pub.dev/packages/genui_x/score)
 [![likes](https://img.shields.io/pub/likes/genui_x.svg)](https://pub.dev/packages/genui_x/score)
 
-A lightweight Claude AI adapter for Google's [genui](https://pub.dev/packages/genui) (Generative UI) framework.
+A lightweight AI backend adapter for Google's [genui](https://pub.dev/packages/genui) (Generative UI) framework.
 
-Use Anthropic's Claude as the AI engine for genui — no changes to the core framework needed.
+Connect any AI backend — Anthropic Claude, OpenAI-compatible APIs, or your own proxy — to genui with no changes to the core framework.
 
 ---
 
 ## What it does
 
-`genui_x` provides `GenuiXTransport`, a drop-in implementation of genui's `Transport` interface. It connects Claude's Messages API to the genui rendering pipeline so that Claude can dynamically build Flutter UIs from your widget catalog.
+`genui_x` provides `GenuiXTransport`, a drop-in implementation of genui's `Transport` interface. It connects your AI backend to the genui rendering pipeline so the model can dynamically build Flutter UIs from your widget catalog.
 
 **How it works:**
 
-1. `GenuiXTransport` sends the full A2UI widget schema to Claude as a system prompt.
-2. Claude responds with A2UI JSON blocks (e.g. `createSurface`, `updateComponents`) embedded in its text output.
+1. `GenuiXTransport` sends the full A2UI widget schema to the AI as a system prompt.
+2. The model responds with A2UI JSON blocks (e.g. `createSurface`, `updateComponents`) embedded in its text output.
 3. genui's built-in `A2uiParserTransformer` extracts these blocks and renders the widgets — automatically.
 
 No tool-calling setup required. No custom parsers. Just plug in your API key.
@@ -32,7 +32,7 @@ No tool-calling setup required. No custom parsers. Just plug in your API key.
 # pubspec.yaml
 dependencies:
   genui: ^0.8.0
-  genui_x: ^0.0.4
+  genui_x: ^0.0.6
 ```
 
 ### 2. Create your catalog
@@ -176,6 +176,46 @@ Minimal example:
 ```bash
 cd example
 flutter run -t lib/minimal_main.dart --dart-define=CLAUDE_API_KEY=sk-ant-your-key-here
+```
+
+---
+
+## Transport controls
+
+### Cancel an in-flight request
+
+```dart
+// Stop the current stream and reset isLoading to false.
+transport.cancel();
+```
+
+### Clear conversation history
+
+```dart
+// Start a fresh conversation without creating a new transport.
+transport.clearHistory();
+```
+
+### Loading state
+
+```dart
+// Drive a loading indicator without manual state tracking.
+ValueListenableBuilder<bool>(
+  valueListenable: transport.isLoading,
+  builder: (context, loading, _) {
+    return loading ? const CircularProgressIndicator() : const SizedBox.shrink();
+  },
+);
+```
+
+### Debug logging
+
+```dart
+final transport = GenuiXTransport(
+  apiKey: 'your-key',
+  catalog: myCatalog,
+  debug: true, // prints request URL, status code, and errors to console
+);
 ```
 
 ---
