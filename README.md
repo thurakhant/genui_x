@@ -32,7 +32,7 @@ No tool-calling setup required. No custom parsers. Just plug in your API key.
 # pubspec.yaml
 dependencies:
   genui: ^0.8.0
-  genui_x: ^0.0.6
+  genui_x: ^0.0.7
 ```
 
 ### 2. Create your catalog

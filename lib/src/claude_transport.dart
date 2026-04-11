@@ -12,33 +12,66 @@ import 'claude_config.dart';
 import 'openai_sse_parser.dart';
 import 'sse_parser.dart';
 
-/// A [Transport] implementation that uses Anthropic's Claude API.
+/// A [Transport] implementation that connects any AI backend to genui.
 ///
-/// Connects the genui framework to Claude by generating A2UI JSON messages
-/// in markdown code blocks, which the [A2uiParserTransformer] automatically
-/// extracts and routes to the [SurfaceController].
+/// Works with Anthropic Claude, OpenAI-compatible APIs, and any custom proxy.
+/// Sends the A2UI widget schema as a system prompt and streams the response
+/// back through genui's rendering pipeline.
 ///
-/// ## Usage
+/// ## Basic usage (Claude)
 ///
 /// ```dart
 /// final transport = GenuiXTransport(
 ///   apiKey: 'your-api-key',
 ///   catalog: myCatalog,
 /// );
+/// ```
 ///
-/// final controller = SurfaceController(catalogs: [myCatalog]);
-/// final conversation = Conversation(
-///   controller: controller,
-///   transport: transport,
+/// ## Proxy / OpenAI-compatible backend
+///
+/// ```dart
+/// final transport = GenuiXTransport(
+///   apiKey: 'your-key',
+///   catalog: myCatalog,
+///   baseUrl: 'https://your-proxy.example.com',
+///   endpointPath: '/v1/chat/completions',
+///   apiKeyHeader: 'authorization',
+///   apiKeyPrefix: 'Bearer ',
+///   streamFormat: GenuiXStreamFormat.openai,
 /// );
 /// ```
 class GenuiXTransport implements Transport {
   /// Creates a [GenuiXTransport].
   ///
-  /// [apiKey] is required. All other parameters are optional.
-  /// [catalog] defines the UI components the AI can generate.
-  /// [model] defaults to `claude-haiku-4-5-20251001` for cost efficiency.
-  /// [baseUrl] can be overridden to route through your own proxy.
+  /// ### Required
+  /// - [apiKey] — API key sent in the request header.
+  /// - [catalog] — defines the UI components the AI can generate.
+  ///
+  /// ### Backend
+  /// - [model] — model identifier. Defaults to `claude-haiku-4-5-20251001`.
+  /// - [baseUrl] — base URL of the API. Defaults to `https://api.anthropic.com`.
+  ///   Override to route through your own proxy.
+  /// - [endpointPath] — path appended to [baseUrl]. Defaults to `/v1/messages`.
+  /// - [maxTokens] — maximum tokens in the response. Defaults to `8192`.
+  /// - [streamFormat] — SSE format to parse. Use [GenuiXStreamFormat.openai]
+  ///   for OpenAI-compatible endpoints. Defaults to [GenuiXStreamFormat.anthropic].
+  ///
+  /// ### Auth / Headers
+  /// - [apiKeyHeader] — header name for the API key. Defaults to `x-api-key`.
+  /// - [apiKeyPrefix] — prefix prepended to the key value. Use `'Bearer '`
+  ///   for Authorization-style headers.
+  /// - [headers] — additional headers merged into every request.
+  ///
+  /// ### Prompt
+  /// - [systemPromptFragments] — extra instructions injected into the system
+  ///   prompt before the catalog schema (persona, date, domain restrictions).
+  /// - [requestBodyOverrides] — raw JSON fields merged into the request body,
+  ///   useful for provider-specific options like `response_format`.
+  ///
+  /// ### Debugging
+  /// - [debug] — when `true`, prints request URL, status code, and errors
+  ///   via [debugPrint]. Useful for diagnosing proxy configuration issues.
+  /// - [httpClient] — override the HTTP client (useful for testing).
   GenuiXTransport({
     required String apiKey,
     required Catalog catalog,
@@ -95,9 +128,17 @@ class GenuiXTransport implements Transport {
     systemPromptFragments: _config.systemPromptFragments,
   ).systemPromptJoined();
 
+  /// Stream of parsed A2UI messages from the AI response.
+  ///
+  /// Use this to react to structured UI commands such as `createSurface`
+  /// or `updateComponents`. For raw text, use [incomingText].
   @override
   Stream<A2uiMessage> get incomingMessages => _adapter.incomingMessages;
 
+  /// Stream of raw text chunks from the AI response.
+  ///
+  /// Emits each chunk as it arrives from the streaming API.
+  /// A2UI JSON blocks are included in this stream before being parsed.
   @override
   Stream<String> get incomingText => _adapter.incomingText;
 
@@ -115,6 +156,14 @@ class GenuiXTransport implements Transport {
   /// Call this to start a fresh conversation without creating a new transport.
   void clearHistory() => _history.clear();
 
+  /// Sends a message to the AI backend and streams the response.
+  ///
+  /// Adds [message] to the conversation history, streams the response
+  /// through [incomingText] and [incomingMessages], then appends the
+  /// assistant reply to history for multi-turn context.
+  ///
+  /// Throws [GenuiXAuthError] on 401/403. Other API errors are surfaced
+  /// as a text chunk rather than thrown, so the conversation continues.
   @override
   Future<void> sendRequest(ChatMessage message) async {
     _history.add(_toClaudeMessage(message));

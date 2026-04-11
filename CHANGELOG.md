@@ -1,4 +1,10 @@
-## 0.0.6
+## 0.0.8
+
+* Improve doc comments on all public APIs — `GenuiXTransport`, `GenuiXConfig`, `GenuiXStreamFormat`, `GenuiXAuthError`, `GenuiXApiError`.
+* Add `example/lib/proxy_main.dart` — runnable example for OpenAI-compatible backends (LiteLLM, OpenRouter, custom proxy).
+* Update `example/README.md` to document all three entry points.
+
+## 0.0.7
 
 * Rename `ClaudeTransport` → `GenuiXTransport`, `ClaudeConfig` → `GenuiXConfig`, `ClaudeStreamFormat` → `GenuiXStreamFormat` — names no longer imply Claude-only.
 * Rename `ClaudeAuthException` → `GenuiXAuthError` and `ClaudeApiException` → `GenuiXApiError` for provider-neutral naming.
