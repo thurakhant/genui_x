@@ -31,6 +31,7 @@ class GenuiXConfig {
     this.debug = false,
     this.surfaceOperations,
     this.clientDataModel,
+    this.maxRetries = 3,
   });
 
   /// The Anthropic API key.
@@ -130,4 +131,13 @@ class GenuiXConfig {
   /// clientDataModel: {'userName': 'Alice', 'plan': 'pro'}
   /// ```
   final Map<String, Object?>? clientDataModel;
+
+  /// Maximum number of automatic retries on 429 rate-limit responses.
+  ///
+  /// Uses exponential backoff (1 s, 2 s, 4 s, …) unless the server supplies
+  /// a `Retry-After` header, in which case that value is used instead.
+  /// Set to `0` to disable retries.
+  ///
+  /// Defaults to `3`.
+  final int maxRetries;
 }

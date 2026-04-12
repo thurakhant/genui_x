@@ -1,6 +1,6 @@
 name: genui_x
 description: "Connect any AI backend — Claude, OpenAI-compatible, or custom proxy — to Google's genui (Generative UI) framework."
-version: 0.0.9
+version: 0.0.10
 repository: https://github.com/thurakhant/genui_x
 issue_tracker: https://github.com/thurakhant/genui_x/issues
 

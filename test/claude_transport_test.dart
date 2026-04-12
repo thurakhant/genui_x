@@ -39,6 +39,7 @@ GenuiXTransport _transport({required http.Client httpClient}) =>
     GenuiXTransport(
       apiKey: 'test-key',
       catalog: _catalog,
+      maxRetries: 0,
       httpClient: httpClient,
     );
 
@@ -411,6 +412,141 @@ void main() {
       );
       expect(client.lastRequestBody, contains('Alice'));
       expect(client.lastRequestBody, contains('pro'));
+      t.dispose();
+    });
+  });
+
+  group('GenuiXTransport.anthropic()', () {
+    test('sends x-api-key header', () async {
+      http.BaseRequest? captured;
+      final t = GenuiXTransport.anthropic(
+        apiKey: 'ant-test',
+        catalog: _catalog,
+        httpClient: _MockHttpClient((req) async {
+          captured = req;
+          return _response(401, 'stop');
+        }),
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      expect(captured!.headers['x-api-key'], 'ant-test');
+      t.dispose();
+    });
+
+    test('posts to /v1/messages', () async {
+      http.BaseRequest? captured;
+      final t = GenuiXTransport.anthropic(
+        apiKey: 'ant-test',
+        catalog: _catalog,
+        httpClient: _MockHttpClient((req) async {
+          captured = req;
+          return _response(401, 'stop');
+        }),
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      expect(captured!.url.path, '/v1/messages');
+      t.dispose();
+    });
+
+    test('uses claude-haiku-4-5-20251001 as default model', () async {
+      final client = _CapturingHttpClient();
+      final t = GenuiXTransport.anthropic(
+        apiKey: 'ant-test',
+        catalog: _catalog,
+        httpClient: client,
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      expect(client.lastRequestBody, contains('claude-haiku-4-5-20251001'));
+      t.dispose();
+    });
+
+    test('custom baseUrl is respected', () async {
+      http.BaseRequest? captured;
+      final t = GenuiXTransport.anthropic(
+        apiKey: 'ant-test',
+        catalog: _catalog,
+        baseUrl: 'https://my-proxy.example.com',
+        httpClient: _MockHttpClient((req) async {
+          captured = req;
+          return _response(401, 'stop');
+        }),
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      expect(captured!.url.host, 'my-proxy.example.com');
+      t.dispose();
+    });
+  });
+
+  group('GenuiXTransport — retry on 429', () {
+    test('maxRetries: 0 throws immediately on 429', () async {
+      final t = GenuiXTransport(
+        apiKey: 'test-key',
+        catalog: _catalog,
+        maxRetries: 0,
+        httpClient: _MockHttpClient((_) async => _response(429, 'rate limited')),
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXRateLimitError>()),
+      );
+      t.dispose();
+    });
+
+    test('succeeds on second attempt after 429', () async {
+      int calls = 0;
+      const sseData =
+          'event: content_block_delta\n'
+          'data: {"type":"content_block_delta","index":0,'
+          '"delta":{"type":"text_delta","text":"Hi"}}\n\n';
+
+      final t = GenuiXTransport(
+        apiKey: 'test-key',
+        catalog: _catalog,
+        maxRetries: 1,
+        httpClient: _MockHttpClient((_) async {
+          calls++;
+          if (calls == 1) {
+            return http.StreamedResponse(
+              Stream.value(utf8.encode('rate limited')),
+              429,
+              headers: {'retry-after': '0'},
+            );
+          }
+          return http.StreamedResponse(Stream.value(utf8.encode(sseData)), 200);
+        }),
+      );
+
+      await expectLater(t.sendRequest(ChatMessage.user('hello')), completes);
+      expect(calls, 2);
+      t.dispose();
+    });
+
+    test('throws GenuiXRateLimitError after exhausting all retries', () async {
+      final t = GenuiXTransport(
+        apiKey: 'test-key',
+        catalog: _catalog,
+        maxRetries: 1,
+        httpClient: _MockHttpClient((_) async => http.StreamedResponse(
+              Stream.value(utf8.encode('rate limited')),
+              429,
+              headers: {'retry-after': '0'},
+            )),
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXRateLimitError>()),
+      );
       t.dispose();
     });
   });

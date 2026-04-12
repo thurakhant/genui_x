@@ -1,3 +1,8 @@
+## 0.0.10
+
+* Add `GenuiXTransport.anthropic()` factory constructor — mirrors `.openai()` with explicit Anthropic defaults (`x-api-key` header, `/v1/messages` endpoint, Anthropic SSE format).
+* Add automatic retry on 429 responses with exponential backoff — configurable via `maxRetries` (default `3`). Respects `Retry-After` header when present.
+
 ## 0.0.9
 
 * Add `GenuiXTransport.openai()` factory constructor — pre-configures `Authorization: Bearer` header, `/v1/chat/completions` endpoint, and OpenAI SSE format. Works with OpenAI, OpenRouter, LiteLLM, and any OpenAI-compatible proxy.

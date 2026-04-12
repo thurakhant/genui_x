@@ -74,6 +74,10 @@ class GenuiXTransport implements Transport {
   /// - [requestBodyOverrides] — raw JSON fields merged into the request body,
   ///   useful for provider-specific options like `response_format`.
   ///
+  /// ### Retries
+  /// - [maxRetries] — number of automatic retries on 429 responses with
+  ///   exponential backoff. Defaults to `3`. Set to `0` to disable.
+  ///
   /// ### Debugging
   /// - [debug] — when `true`, prints request URL, status code, and errors
   ///   via [debugPrint]. Useful for diagnosing proxy configuration issues.
@@ -95,6 +99,7 @@ class GenuiXTransport implements Transport {
     bool debug = false,
     SurfaceOperations? surfaceOperations,
     Map<String, Object?>? clientDataModel,
+    int maxRetries = 3,
   })  : _config = GenuiXConfig(
           apiKey: apiKey,
           model: model ?? 'claude-haiku-4-5-20251001',
@@ -110,6 +115,7 @@ class GenuiXTransport implements Transport {
           debug: debug,
           surfaceOperations: surfaceOperations,
           clientDataModel: clientDataModel,
+          maxRetries: maxRetries,
         ),
         _catalog = catalog,
         _httpClient = httpClient ?? http.Client(),
@@ -151,6 +157,7 @@ class GenuiXTransport implements Transport {
     bool debug = false,
     SurfaceOperations? surfaceOperations,
     Map<String, Object?>? clientDataModel,
+    int maxRetries = 3,
   }) {
     return GenuiXTransport(
       apiKey: apiKey,
@@ -169,6 +176,64 @@ class GenuiXTransport implements Transport {
       debug: debug,
       surfaceOperations: surfaceOperations,
       clientDataModel: clientDataModel,
+      maxRetries: maxRetries,
+    );
+  }
+
+  /// Creates a [GenuiXTransport] pre-configured for Anthropic Claude.
+  ///
+  /// Sets the correct `x-api-key` header, `/v1/messages` endpoint, and
+  /// Anthropic SSE stream format automatically — mirrors [GenuiXTransport.openai]
+  /// for symmetry and explicit defaults.
+  ///
+  /// ```dart
+  /// final transport = GenuiXTransport.anthropic(
+  ///   apiKey: 'your-anthropic-key',
+  ///   catalog: myCatalog,
+  /// );
+  /// ```
+  ///
+  /// Override [model] for a different Claude version:
+  /// ```dart
+  /// GenuiXTransport.anthropic(
+  ///   apiKey: 'your-key',
+  ///   catalog: myCatalog,
+  ///   model: 'claude-sonnet-4-6',
+  /// );
+  /// ```
+  factory GenuiXTransport.anthropic({
+    required String apiKey,
+    required Catalog catalog,
+    String model = 'claude-haiku-4-5-20251001',
+    String baseUrl = 'https://api.anthropic.com',
+    int maxTokens = 8192,
+    http.Client? httpClient,
+    Map<String, String> headers = const <String, String>{},
+    Map<String, Object?> requestBodyOverrides = const <String, Object?>{},
+    List<String> systemPromptFragments = const <String>[],
+    bool debug = false,
+    SurfaceOperations? surfaceOperations,
+    Map<String, Object?>? clientDataModel,
+    int maxRetries = 3,
+  }) {
+    return GenuiXTransport(
+      apiKey: apiKey,
+      catalog: catalog,
+      model: model,
+      baseUrl: baseUrl,
+      endpointPath: '/v1/messages',
+      maxTokens: maxTokens,
+      httpClient: httpClient,
+      apiKeyHeader: 'x-api-key',
+      apiKeyPrefix: '',
+      headers: headers,
+      streamFormat: GenuiXStreamFormat.anthropic,
+      requestBodyOverrides: requestBodyOverrides,
+      systemPromptFragments: systemPromptFragments,
+      debug: debug,
+      surfaceOperations: surfaceOperations,
+      clientDataModel: clientDataModel,
+      maxRetries: maxRetries,
     );
   }
 
@@ -245,6 +310,41 @@ class GenuiXTransport implements Transport {
     _history.add(_toClaudeMessage(message));
     isLoading.value = true;
 
+    try {
+      final assistantText = await _sendWithRetry();
+      if (assistantText.isNotEmpty) {
+        _history.add({'role': 'assistant', 'content': assistantText});
+      }
+    } finally {
+      _currentStream = null;
+      isLoading.value = false;
+    }
+  }
+
+  /// Attempts the request, retrying on 429 with exponential backoff.
+  Future<String> _sendWithRetry() async {
+    int attempt = 0;
+    while (true) {
+      try {
+        return await _collectStream();
+      } on GenuiXRateLimitError catch (e) {
+        if (attempt >= _config.maxRetries) rethrow;
+        final delay = e.retryAfter != null
+            ? Duration(seconds: e.retryAfter!)
+            : Duration(seconds: 1 << attempt);
+        if (_config.debug) {
+          debugPrint(
+            '[genui_x] rate limited — retry ${attempt + 1}/${_config.maxRetries} in ${delay.inSeconds}s',
+          );
+        }
+        await Future.delayed(delay);
+        attempt++;
+      }
+    }
+  }
+
+  /// Runs one HTTP attempt, collecting streamed chunks into a string.
+  Future<String> _collectStream() async {
     final buffer = StringBuffer();
     final completer = Completer<void>();
 
@@ -270,16 +370,9 @@ class GenuiXTransport implements Transport {
       cancelOnError: true,
     );
 
-    try {
-      await completer.future;
-    } finally {
-      _currentStream = null;
-      isLoading.value = false;
-      final assistantText = buffer.toString();
-      if (assistantText.isNotEmpty) {
-        _history.add({'role': 'assistant', 'content': assistantText});
-      }
-    }
+    await completer.future;
+    _currentStream = null;
+    return buffer.toString();
   }
 
   /// Streams text chunks from the Claude Messages API.
