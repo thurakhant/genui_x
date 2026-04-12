@@ -91,6 +91,74 @@ void main() {
     });
   });
 
+  group('GenuiXTransport — rate limiting', () {
+    test('throws GenuiXRateLimitError on 429', () async {
+      final t = _transport(
+        httpClient: _MockHttpClient(
+          (_) async => _response(429, 'Too Many Requests'),
+        ),
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXRateLimitError>()),
+      );
+      t.dispose();
+    });
+
+    test('GenuiXRateLimitError.retryAfter is null when header absent', () async {
+      GenuiXRateLimitError? caught;
+      final t = _transport(
+        httpClient: _MockHttpClient(
+          (_) async => _response(429, 'Too Many Requests'),
+        ),
+      );
+      try {
+        await t.sendRequest(ChatMessage.user('hello'));
+      } on GenuiXRateLimitError catch (e) {
+        caught = e;
+      }
+      expect(caught, isNotNull);
+      expect(caught!.retryAfter, isNull);
+      t.dispose();
+    });
+
+    test('GenuiXRateLimitError.retryAfter is parsed from Retry-After header', () async {
+      GenuiXRateLimitError? caught;
+      final t = _transport(
+        httpClient: _MockHttpClient((_) async {
+          return http.StreamedResponse(
+            Stream.value(utf8.encode('Too Many Requests')),
+            429,
+            headers: {'retry-after': '30'},
+          );
+        }),
+      );
+      try {
+        await t.sendRequest(ChatMessage.user('hello'));
+      } on GenuiXRateLimitError catch (e) {
+        caught = e;
+      }
+      expect(caught, isNotNull);
+      expect(caught!.retryAfter, 30);
+      t.dispose();
+    });
+
+    test('isLoading is false after rate limit error', () async {
+      final t = _transport(
+        httpClient: _MockHttpClient(
+          (_) async => _response(429, 'Too Many Requests'),
+        ),
+      );
+      try {
+        await t.sendRequest(ChatMessage.user('hello'));
+      } on GenuiXRateLimitError {
+        // expected
+      }
+      expect(t.isLoading.value, isFalse);
+      t.dispose();
+    });
+  });
+
   group('GenuiXTransport — streaming', () {
     test('emits text chunks from Anthropic SSE response', () async {
       const sseData =

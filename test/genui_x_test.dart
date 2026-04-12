@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:genui/genui.dart';
 import 'package:genui_x/genui_x.dart';
 
 void main() {
@@ -93,6 +92,20 @@ void main() {
       expect(config.clientDataModel, isNotNull);
       expect(config.clientDataModel!['userName'], 'Alice');
       expect(config.clientDataModel!['plan'], 'pro');
+    });
+  });
+
+  group('re-exports', () {
+    test('PromptFragments.currentDate is accessible from genui_x', () {
+      // If this compiles, the re-export works.
+      final fragment = PromptFragments.currentDate();
+      expect(fragment, contains('Current Date'));
+    });
+
+    test('SurfaceOperations is accessible from genui_x', () {
+      final ops = SurfaceOperations.all(dataModel: true);
+      expect(ops.create, isTrue);
+      expect(ops.delete, isTrue);
     });
   });
 

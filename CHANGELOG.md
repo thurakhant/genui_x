@@ -1,13 +1,12 @@
-## 0.0.10
-
-* Add `GenuiXTransport.openai()` factory constructor — pre-configures `Authorization: Bearer` header, `/v1/chat/completions` endpoint, and OpenAI SSE format. Works with OpenAI, OpenRouter, LiteLLM, and any OpenAI-compatible proxy.
-* Overhaul README — add "How genui and genui_x fit together" architecture diagram, `GenuiXTransport.openai()` examples for OpenAI/OpenRouter/LiteLLM, and `surfaceOperations`/`clientDataModel` usage.
-
 ## 0.0.9
 
+* Add `GenuiXTransport.openai()` factory constructor — pre-configures `Authorization: Bearer` header, `/v1/chat/completions` endpoint, and OpenAI SSE format. Works with OpenAI, OpenRouter, LiteLLM, and any OpenAI-compatible proxy.
 * Add `surfaceOperations` (`SurfaceOperations?`) to `GenuiXTransport` and `GenuiXConfig` — use `PromptBuilder.custom()` to control which A2UI operations (create, update, delete) the AI may perform. Defaults to `PromptBuilder.chat()` (create-only) when not set.
 * Add `clientDataModel` (`Map<String, Object?>?`) to `GenuiXTransport` and `GenuiXConfig` — inject app-state context (user profile, active session, domain data) into the system prompt.
-* Add transport-level tests for `surfaceOperations` and `clientDataModel` — verify prompt content changes with different configurations.
+* Add `GenuiXRateLimitError` — thrown on 429 responses. Exposes `retryAfter: int?` parsed from the `Retry-After` header.
+* Re-export `PromptFragments` and `SurfaceOperations` from `genui_x.dart` — users no longer need a separate `import 'package:genui/genui.dart'` to configure the transport.
+* Remove Flutter upper-bound constraint (`<4.0.0`) per pub.dev deprecation guidance.
+* Overhaul README — add genui/genui_x architecture diagram, backend examples, `surfaceOperations` and `clientDataModel` usage.
 
 ## 0.0.8
 

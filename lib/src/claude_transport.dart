@@ -254,7 +254,7 @@ class GenuiXTransport implements Transport {
         buffer.write(chunk);
       },
       onError: (Object e, StackTrace st) {
-        if (e is GenuiXAuthError) {
+        if (e is GenuiXAuthError || e is GenuiXRateLimitError) {
           completer.completeError(e, st);
         } else if (e is GenuiXApiError) {
           _adapter.addChunk('\n\nSorry, I encountered an error: ${e.message}');
@@ -329,6 +329,17 @@ class GenuiXTransport implements Transport {
       throw GenuiXAuthError(response.statusCode, body);
     }
 
+    if (response.statusCode == 429) {
+      final body = await response.stream.bytesToString();
+      final retryAfter = int.tryParse(
+        response.headers['retry-after'] ?? '',
+      );
+      if (_config.debug) {
+        debugPrint('[genui_x] rate limited — retry-after: $retryAfter');
+      }
+      throw GenuiXRateLimitError(retryAfter: retryAfter, body: body);
+    }
+
     if (response.statusCode != 200) {
       final body = await response.stream.bytesToString();
       if (_config.debug) debugPrint('[genui_x] api error: $body');
@@ -371,6 +382,26 @@ class GenuiXAuthError implements Exception {
   @override
   String toString() =>
       'GenuiXAuthError($statusCode): Invalid API key or unauthorized. $body';
+}
+
+/// Thrown when the API returns a rate limit response (429).
+///
+/// Check [retryAfter] to know how many seconds to wait before retrying.
+class GenuiXRateLimitError implements Exception {
+  /// Creates a [GenuiXRateLimitError].
+  const GenuiXRateLimitError({this.retryAfter, required this.body});
+
+  /// Seconds to wait before retrying, parsed from the `Retry-After` header.
+  ///
+  /// `null` if the header was absent or could not be parsed.
+  final int? retryAfter;
+
+  /// The response body.
+  final String body;
+
+  @override
+  String toString() => 'GenuiXRateLimitError: Rate limited.'
+      '${retryAfter != null ? ' Retry after ${retryAfter}s.' : ''} $body';
 }
 
 /// Thrown when the API returns an error response.
