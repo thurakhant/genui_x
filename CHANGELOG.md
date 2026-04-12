@@ -1,3 +1,9 @@
+## 0.0.9
+
+* Add `surfaceOperations` (`SurfaceOperations?`) to `GenuiXTransport` and `GenuiXConfig` — use `PromptBuilder.custom()` to control which A2UI operations (create, update, delete) the AI may perform. Defaults to `PromptBuilder.chat()` (create-only) when not set.
+* Add `clientDataModel` (`Map<String, Object?>?`) to `GenuiXTransport` and `GenuiXConfig` — inject app-state context (user profile, active session, domain data) into the system prompt.
+* Add transport-level tests for `surfaceOperations` and `clientDataModel` — verify prompt content changes with different configurations.
+
 ## 0.0.8
 
 * Improve doc comments on all public APIs — `GenuiXTransport`, `GenuiXConfig`, `GenuiXStreamFormat`, `GenuiXAuthError`, `GenuiXApiError`.

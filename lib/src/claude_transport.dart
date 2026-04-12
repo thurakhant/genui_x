@@ -65,6 +65,12 @@ class GenuiXTransport implements Transport {
   /// ### Prompt
   /// - [systemPromptFragments] — extra instructions injected into the system
   ///   prompt before the catalog schema (persona, date, domain restrictions).
+  /// - [surfaceOperations] — controls which A2UI operations the AI may use
+  ///   (create, update, delete surfaces). Defaults to create-only via
+  ///   [PromptBuilder.chat]. Pass a [SurfaceOperations] value to use
+  ///   [PromptBuilder.custom] instead.
+  /// - [clientDataModel] — optional app-state snapshot injected into the
+  ///   system prompt so the AI has context about the current user or session.
   /// - [requestBodyOverrides] — raw JSON fields merged into the request body,
   ///   useful for provider-specific options like `response_format`.
   ///
@@ -87,6 +93,8 @@ class GenuiXTransport implements Transport {
     Map<String, Object?> requestBodyOverrides = const <String, Object?>{},
     List<String> systemPromptFragments = const <String>[],
     bool debug = false,
+    SurfaceOperations? surfaceOperations,
+    Map<String, Object?>? clientDataModel,
   })  : _config = GenuiXConfig(
           apiKey: apiKey,
           model: model ?? 'claude-haiku-4-5-20251001',
@@ -100,6 +108,8 @@ class GenuiXTransport implements Transport {
           requestBodyOverrides: requestBodyOverrides,
           systemPromptFragments: systemPromptFragments,
           debug: debug,
+          surfaceOperations: surfaceOperations,
+          clientDataModel: clientDataModel,
         ),
         _catalog = catalog,
         _httpClient = httpClient ?? http.Client(),
@@ -123,10 +133,19 @@ class GenuiXTransport implements Transport {
   StreamSubscription<String>? _currentStream;
 
   // Cached system prompt (built once from catalog + user fragments)
-  late final String _systemPrompt = PromptBuilder.chat(
-    catalog: _catalog,
-    systemPromptFragments: _config.systemPromptFragments,
-  ).systemPromptJoined();
+  late final String _systemPrompt = (_config.surfaceOperations != null
+          ? PromptBuilder.custom(
+              catalog: _catalog,
+              allowedOperations: _config.surfaceOperations!,
+              systemPromptFragments: _config.systemPromptFragments,
+              clientDataModel: _config.clientDataModel,
+            )
+          : PromptBuilder.chat(
+              catalog: _catalog,
+              systemPromptFragments: _config.systemPromptFragments,
+              clientDataModel: _config.clientDataModel,
+            ))
+      .systemPromptJoined();
 
   /// Stream of parsed A2UI messages from the AI response.
   ///

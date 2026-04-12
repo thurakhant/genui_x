@@ -1,6 +1,8 @@
 // Copyright 2025 genui_x contributors.
 // SPDX-License-Identifier: BSD-3-Clause
 
+import 'package:genui/genui.dart';
+
 /// Supported streaming response formats.
 enum GenuiXStreamFormat {
   /// Anthropic Messages API streaming format.
@@ -27,6 +29,8 @@ class GenuiXConfig {
     this.requestBodyOverrides = const <String, Object?>{},
     this.systemPromptFragments = const <String>[],
     this.debug = false,
+    this.surfaceOperations,
+    this.clientDataModel,
   });
 
   /// The Anthropic API key.
@@ -99,4 +103,31 @@ class GenuiXConfig {
   /// Logs the request URL, model, status code, and any errors via [debugPrint].
   /// Useful for debugging proxy configuration issues.
   final bool debug;
+
+  /// Controls which A2UI surface operations the AI is allowed to perform.
+  ///
+  /// When set, [PromptBuilder.custom] is used instead of [PromptBuilder.chat],
+  /// giving you fine-grained control over whether the AI can create, update,
+  /// or delete surfaces.
+  ///
+  /// Defaults to `null`, which uses [PromptBuilder.chat] with
+  /// [SurfaceOperations.createOnly].
+  ///
+  /// Example — allow full create + update + delete:
+  /// ```dart
+  /// surfaceOperations: SurfaceOperations.all(dataModel: false)
+  /// ```
+  final SurfaceOperations? surfaceOperations;
+
+  /// Optional app-state snapshot injected into the system prompt.
+  ///
+  /// Pass a JSON-serialisable map to give the AI context about the current
+  /// application state — for example the signed-in user's profile, the active
+  /// route, or domain-specific data.
+  ///
+  /// Example:
+  /// ```dart
+  /// clientDataModel: {'userName': 'Alice', 'plan': 'pro'}
+  /// ```
+  final Map<String, Object?>? clientDataModel;
 }

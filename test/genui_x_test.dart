@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:genui/genui.dart';
 import 'package:genui_x/genui_x.dart';
 
 void main() {
@@ -48,6 +49,50 @@ void main() {
       expect(config.streamFormat, GenuiXStreamFormat.openai);
       expect(config.requestBodyOverrides['response_format'],
           {'type': 'json_object'});
+    });
+  });
+
+  group('GenuiXConfig — surfaceOperations and clientDataModel', () {
+    test('surfaceOperations defaults to null', () {
+      const config = GenuiXConfig(apiKey: 'test-key');
+      expect(config.surfaceOperations, isNull);
+    });
+
+    test('clientDataModel defaults to null', () {
+      const config = GenuiXConfig(apiKey: 'test-key');
+      expect(config.clientDataModel, isNull);
+    });
+
+    test('accepts SurfaceOperations.all', () {
+      final config = GenuiXConfig(
+        apiKey: 'test-key',
+        surfaceOperations: SurfaceOperations.all(dataModel: true),
+      );
+      expect(config.surfaceOperations, isNotNull);
+      expect(config.surfaceOperations!.create, isTrue);
+      expect(config.surfaceOperations!.update, isTrue);
+      expect(config.surfaceOperations!.delete, isTrue);
+      expect(config.surfaceOperations!.dataModel, isTrue);
+    });
+
+    test('accepts SurfaceOperations.createOnly', () {
+      final config = GenuiXConfig(
+        apiKey: 'test-key',
+        surfaceOperations: SurfaceOperations.createOnly(dataModel: false),
+      );
+      expect(config.surfaceOperations!.create, isTrue);
+      expect(config.surfaceOperations!.update, isFalse);
+      expect(config.surfaceOperations!.delete, isFalse);
+    });
+
+    test('accepts clientDataModel map', () {
+      final config = GenuiXConfig(
+        apiKey: 'test-key',
+        clientDataModel: {'userName': 'Alice', 'plan': 'pro'},
+      );
+      expect(config.clientDataModel, isNotNull);
+      expect(config.clientDataModel!['userName'], 'Alice');
+      expect(config.clientDataModel!['plan'], 'pro');
     });
   });
 

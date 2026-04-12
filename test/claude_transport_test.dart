@@ -8,6 +8,17 @@ import 'package:genui/genui.dart';
 import 'package:genui_x/genui_x.dart';
 import 'package:http/http.dart' as http;
 
+// Captures the raw request body for inspection.
+class _CapturingHttpClient extends http.BaseClient {
+  String? lastRequestBody;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    lastRequestBody = await (request as http.Request).finalize().bytesToString();
+    return http.StreamedResponse(Stream.value(utf8.encode('')), 401);
+  }
+}
+
 // Minimal mock HTTP client — no extra dependencies needed.
 class _MockHttpClient extends http.BaseClient {
   final Future<http.StreamedResponse> Function(http.BaseRequest) _handler;
@@ -193,6 +204,73 @@ void main() {
       final secondBody = requestBodies[1];
       expect(secondBody, isNot(contains('"first"')));
       expect(secondBody, contains('"second"'));
+      t.dispose();
+    });
+  });
+
+  group('GenuiXTransport — surfaceOperations and clientDataModel', () {
+    test('default (no surfaceOperations) includes createSurface in system prompt', () async {
+      final client = _CapturingHttpClient();
+      final t = GenuiXTransport(
+        apiKey: 'test-key',
+        catalog: _catalog,
+        httpClient: client,
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      expect(client.lastRequestBody, contains('createSurface'));
+      t.dispose();
+    });
+
+    test('SurfaceOperations.all includes deleteSurface in system prompt', () async {
+      final client = _CapturingHttpClient();
+      final t = GenuiXTransport(
+        apiKey: 'test-key',
+        catalog: _catalog,
+        surfaceOperations: SurfaceOperations.all(dataModel: false),
+        httpClient: client,
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      expect(client.lastRequestBody, contains('deleteSurface'));
+      t.dispose();
+    });
+
+    test('SurfaceOperations.createOnly restricts updates in system prompt', () async {
+      final client = _CapturingHttpClient();
+      final t = GenuiXTransport(
+        apiKey: 'test-key',
+        catalog: _catalog,
+        surfaceOperations: SurfaceOperations.createOnly(dataModel: false),
+        httpClient: client,
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      // createOnly has update:false — genui injects a "DO NOT update" instruction
+      expect(client.lastRequestBody, contains('DO NOT update or modify surfaces'));
+      t.dispose();
+    });
+
+    test('clientDataModel is included in system prompt', () async {
+      final client = _CapturingHttpClient();
+      final t = GenuiXTransport(
+        apiKey: 'test-key',
+        catalog: _catalog,
+        clientDataModel: {'userName': 'Alice', 'plan': 'pro'},
+        httpClient: client,
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      expect(client.lastRequestBody, contains('Alice'));
+      expect(client.lastRequestBody, contains('pro'));
       t.dispose();
     });
   });
