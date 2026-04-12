@@ -1,3 +1,8 @@
+## 0.0.10
+
+* Add `GenuiXTransport.openai()` factory constructor — pre-configures `Authorization: Bearer` header, `/v1/chat/completions` endpoint, and OpenAI SSE format. Works with OpenAI, OpenRouter, LiteLLM, and any OpenAI-compatible proxy.
+* Overhaul README — add "How genui and genui_x fit together" architecture diagram, `GenuiXTransport.openai()` examples for OpenAI/OpenRouter/LiteLLM, and `surfaceOperations`/`clientDataModel` usage.
+
 ## 0.0.9
 
 * Add `surfaceOperations` (`SurfaceOperations?`) to `GenuiXTransport` and `GenuiXConfig` — use `PromptBuilder.custom()` to control which A2UI operations (create, update, delete) the AI may perform. Defaults to `PromptBuilder.chat()` (create-only) when not set.

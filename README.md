@@ -6,21 +6,27 @@
 
 A lightweight AI backend adapter for Google's [genui](https://pub.dev/packages/genui) (Generative UI) framework.
 
-Connect any AI backend — Anthropic Claude, OpenAI-compatible APIs, or your own proxy — to genui with no changes to the core framework.
+Connect any AI backend — Anthropic Claude, OpenAI, OpenRouter, LiteLLM, or your own proxy — to genui with a single class.
 
 ---
 
-## What it does
+## How genui and genui_x fit together
 
-`genui_x` provides `GenuiXTransport`, a drop-in implementation of genui's `Transport` interface. It connects your AI backend to the genui rendering pipeline so the model can dynamically build Flutter UIs from your widget catalog.
+```
+Your App
+  │
+  ├── genui          ← UI engine: renders widgets, manages surfaces
+  │     Catalog      ← your widget definitions
+  │     Conversation ← drives the chat loop
+  │     Surface      ← renders AI-generated UI in your widget tree
+  │
+  └── genui_x        ← backend wire: HTTP, streaming, auth
+        GenuiXTransport ← implements genui's Transport interface
+```
 
-**How it works:**
+**genui** handles everything on the UI side — defining widgets, parsing A2UI JSON, and rendering surfaces. It ships no HTTP client.
 
-1. `GenuiXTransport` sends the full A2UI widget schema to the AI as a system prompt.
-2. The model responds with A2UI JSON blocks (e.g. `createSurface`, `updateComponents`) embedded in its text output.
-3. genui's built-in `A2uiParserTransformer` extracts these blocks and renders the widgets — automatically.
-
-No tool-calling setup required. No custom parsers. Just plug in your API key.
+**genui_x** provides the missing piece: a `Transport` that calls any AI backend, streams the response, and feeds it back into genui's rendering pipeline.
 
 ---
 
@@ -32,14 +38,13 @@ No tool-calling setup required. No custom parsers. Just plug in your API key.
 # pubspec.yaml
 dependencies:
   genui: ^0.8.0
-  genui_x: ^0.0.7
+  genui_x: ^0.0.10
 ```
 
 ### 2. Create your catalog
 
 ```dart
 import 'package:genui/genui.dart';
-import 'package:json_schema_builder/json_schema_builder.dart';
 
 final myCatalog = Catalog(
   [
@@ -78,7 +83,6 @@ final transport = GenuiXTransport(
   apiKey: 'sk-ant-your-key-here',  // Never hardcode in production
   catalog: myCatalog,
   // model: 'claude-sonnet-4-6',   // Optional — default is claude-haiku-4-5
-  // baseUrl: 'https://my-proxy',  // Optional — for proxy backends
 );
 
 final controller = SurfaceController(catalogs: [myCatalog]);
@@ -106,33 +110,40 @@ ValueListenableBuilder(
 
 ---
 
-## API key security
+## Backends
 
-**Never hardcode your API key in client-side code.**
-
-Recommended approaches:
-- Pass it via `--dart-define=CLAUDE_API_KEY=sk-ant-...` during development.
-- In production, route through your own backend proxy and set `baseUrl` to your proxy URL.
-
-You can use `.env.example` as a template for local development values.
-
-### Using LiteLLM or a proxy
-
-If your proxy uses Authorization headers or a custom path, configure the
-transport like this:
+### Anthropic Claude (default)
 
 ```dart
 final transport = GenuiXTransport(
-  apiKey: 'your-key',
+  apiKey: 'sk-ant-your-key',
   catalog: myCatalog,
-  baseUrl: 'https://your-proxy.example.com',
-  endpointPath: '/v1/messages',
-  apiKeyHeader: 'authorization',
-  apiKeyPrefix: 'Bearer ',
+  model: 'claude-sonnet-4-6', // optional
 );
 ```
 
-For OpenAI-style streaming endpoints, set the stream format and path:
+### OpenAI
+
+```dart
+final transport = GenuiXTransport.openai(
+  apiKey: 'sk-your-openai-key',
+  catalog: myCatalog,
+  // model: 'gpt-4o',  // optional — default is gpt-4o-mini
+);
+```
+
+### OpenRouter / LiteLLM / custom proxy
+
+```dart
+final transport = GenuiXTransport.openai(
+  apiKey: 'sk-or-your-key',
+  catalog: myCatalog,
+  baseUrl: 'https://openrouter.ai/api',
+  model: 'anthropic/claude-3.5-sonnet',
+);
+```
+
+For a fully custom proxy with non-standard headers:
 
 ```dart
 final transport = GenuiXTransport(
@@ -143,39 +154,44 @@ final transport = GenuiXTransport(
   apiKeyHeader: 'authorization',
   apiKeyPrefix: 'Bearer ',
   streamFormat: GenuiXStreamFormat.openai,
-  requestBodyOverrides: const {
-    'response_format': {'type': 'json_object'},
-  },
 );
 ```
 
 ---
 
-## Models
+## Surface operations
 
-| Model | Speed | Cost | Recommended for |
-|-------|-------|------|-----------------|
-| `claude-haiku-4-5-20251001` | Fast | Low | Default, prototyping |
-| `claude-sonnet-4-6` | Balanced | Medium | Production quality |
-| `claude-opus-4-6` | Slow | High | Complex UIs |
+By default the AI can only **create** new surfaces. Use `surfaceOperations` to
+allow updates or deletion:
+
+```dart
+import 'package:genui/genui.dart'; // for SurfaceOperations
+
+final transport = GenuiXTransport(
+  apiKey: 'your-key',
+  catalog: myCatalog,
+  surfaceOperations: SurfaceOperations.createAndUpdate(dataModel: false),
+  // SurfaceOperations.all(dataModel: true)      — create + update + delete + data model
+  // SurfaceOperations.updateOnly(dataModel: false) — update only
+);
+```
 
 ---
 
-## Example
+## Client data model
 
-See the [`example/`](example/) folder for a working chat app that renders a
-`WeatherWidget` dynamically when the user asks about weather.
+Pass app-state context so the AI knows about the current user or session:
 
-```bash
-cd example
-flutter run --dart-define=CLAUDE_API_KEY=sk-ant-your-key-here
-```
-
-Minimal example:
-
-```bash
-cd example
-flutter run -t lib/minimal_main.dart --dart-define=CLAUDE_API_KEY=sk-ant-your-key-here
+```dart
+final transport = GenuiXTransport(
+  apiKey: 'your-key',
+  catalog: myCatalog,
+  clientDataModel: {
+    'userName': 'Alice',
+    'plan': 'pro',
+    'locale': 'en-US',
+  },
+);
 ```
 
 ---
@@ -185,21 +201,18 @@ flutter run -t lib/minimal_main.dart --dart-define=CLAUDE_API_KEY=sk-ant-your-ke
 ### Cancel an in-flight request
 
 ```dart
-// Stop the current stream and reset isLoading to false.
 transport.cancel();
 ```
 
 ### Clear conversation history
 
 ```dart
-// Start a fresh conversation without creating a new transport.
 transport.clearHistory();
 ```
 
 ### Loading state
 
 ```dart
-// Drive a loading indicator without manual state tracking.
 ValueListenableBuilder<bool>(
   valueListenable: transport.isLoading,
   builder: (context, loading, _) {
@@ -220,8 +233,51 @@ final transport = GenuiXTransport(
 
 ---
 
+## Models
+
+| Provider | Model | Notes |
+|----------|-------|-------|
+| Claude | `claude-haiku-4-5-20251001` | Default — fast, low cost |
+| Claude | `claude-sonnet-4-6` | Balanced quality/cost |
+| Claude | `claude-opus-4-6` | Highest quality |
+| OpenAI | `gpt-4o-mini` | Default for `.openai()` |
+| OpenAI | `gpt-4o` | Higher quality |
+| OpenRouter | any model slug | via `GenuiXTransport.openai(baseUrl: ...)` |
+
+---
+
+## Example
+
+See the [`example/`](example/) folder for working apps:
+
+```bash
+# Claude (default)
+cd example
+flutter run --dart-define=CLAUDE_API_KEY=sk-ant-your-key-here
+
+# Minimal
+flutter run -t lib/minimal_main.dart --dart-define=CLAUDE_API_KEY=sk-ant-your-key-here
+
+# OpenAI-compatible proxy
+flutter run -t lib/proxy_main.dart \
+  --dart-define=PROXY_BASE_URL=https://openrouter.ai/api \
+  --dart-define=PROXY_API_KEY=sk-or-your-key \
+  --dart-define=PROXY_MODEL=anthropic/claude-3.5-sonnet
+```
+
+---
+
+## API key security
+
+**Never hardcode your API key in client-side code.**
+
+- During development, pass it via `--dart-define=API_KEY=...`
+- In production, route through your own backend proxy and set `baseUrl` to your proxy URL
+
+---
+
 ## Limitations
 
 - **Streaming only** — non-streaming mode is not supported.
-- **Flutter Web** — direct API calls to Anthropic will fail due to CORS. Use the `baseUrl` parameter to route through a backend proxy.
+- **Flutter Web** — direct API calls to Anthropic or OpenAI will fail due to CORS. Use `baseUrl` to route through a backend proxy.
 - **genui alpha** — genui itself is in early development; breaking changes may occur.

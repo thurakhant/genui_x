@@ -208,6 +208,78 @@ void main() {
     });
   });
 
+  group('GenuiXTransport.openai()', () {
+    test('sends Authorization Bearer header', () async {
+      http.BaseRequest? captured;
+      final t = GenuiXTransport.openai(
+        apiKey: 'sk-test',
+        catalog: _catalog,
+        httpClient: _MockHttpClient((req) async {
+          captured = req;
+          return _response(401, 'stop');
+        }),
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      expect(captured!.headers['authorization'], 'Bearer sk-test');
+      t.dispose();
+    });
+
+    test('posts to /v1/chat/completions', () async {
+      http.BaseRequest? captured;
+      final t = GenuiXTransport.openai(
+        apiKey: 'sk-test',
+        catalog: _catalog,
+        httpClient: _MockHttpClient((req) async {
+          captured = req;
+          return _response(401, 'stop');
+        }),
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      expect(captured!.url.path, '/v1/chat/completions');
+      t.dispose();
+    });
+
+    test('uses gpt-4o-mini as default model', () async {
+      final client = _CapturingHttpClient();
+      final t = GenuiXTransport.openai(
+        apiKey: 'sk-test',
+        catalog: _catalog,
+        httpClient: client,
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      expect(client.lastRequestBody, contains('gpt-4o-mini'));
+      t.dispose();
+    });
+
+    test('custom baseUrl is respected', () async {
+      http.BaseRequest? captured;
+      final t = GenuiXTransport.openai(
+        apiKey: 'sk-test',
+        catalog: _catalog,
+        baseUrl: 'https://openrouter.ai/api',
+        httpClient: _MockHttpClient((req) async {
+          captured = req;
+          return _response(401, 'stop');
+        }),
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      expect(captured!.url.host, 'openrouter.ai');
+      t.dispose();
+    });
+  });
+
   group('GenuiXTransport — surfaceOperations and clientDataModel', () {
     test('default (no surfaceOperations) includes createSurface in system prompt', () async {
       final client = _CapturingHttpClient();

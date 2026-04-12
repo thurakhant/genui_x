@@ -115,6 +115,63 @@ class GenuiXTransport implements Transport {
         _httpClient = httpClient ?? http.Client(),
         _adapter = A2uiTransportAdapter();
 
+  /// Creates a [GenuiXTransport] pre-configured for OpenAI-compatible backends.
+  ///
+  /// Sets the correct `Authorization: Bearer` header, `/v1/chat/completions`
+  /// endpoint, and OpenAI SSE stream format automatically — no boilerplate needed.
+  ///
+  /// Works with OpenAI, OpenRouter, LiteLLM, and any OpenAI-compatible proxy.
+  ///
+  /// ```dart
+  /// final transport = GenuiXTransport.openai(
+  ///   apiKey: 'sk-your-openai-key',
+  ///   catalog: myCatalog,
+  /// );
+  /// ```
+  ///
+  /// Override [baseUrl] for third-party providers:
+  /// ```dart
+  /// GenuiXTransport.openai(
+  ///   apiKey: 'sk-or-key',
+  ///   catalog: myCatalog,
+  ///   baseUrl: 'https://openrouter.ai/api',
+  ///   model: 'anthropic/claude-3.5-sonnet',
+  /// );
+  /// ```
+  factory GenuiXTransport.openai({
+    required String apiKey,
+    required Catalog catalog,
+    String model = 'gpt-4o-mini',
+    String baseUrl = 'https://api.openai.com',
+    int maxTokens = 8192,
+    http.Client? httpClient,
+    Map<String, String> headers = const <String, String>{},
+    Map<String, Object?> requestBodyOverrides = const <String, Object?>{},
+    List<String> systemPromptFragments = const <String>[],
+    bool debug = false,
+    SurfaceOperations? surfaceOperations,
+    Map<String, Object?>? clientDataModel,
+  }) {
+    return GenuiXTransport(
+      apiKey: apiKey,
+      catalog: catalog,
+      model: model,
+      baseUrl: baseUrl,
+      endpointPath: '/v1/chat/completions',
+      maxTokens: maxTokens,
+      httpClient: httpClient,
+      apiKeyHeader: 'authorization',
+      apiKeyPrefix: 'Bearer ',
+      headers: headers,
+      streamFormat: GenuiXStreamFormat.openai,
+      requestBodyOverrides: requestBodyOverrides,
+      systemPromptFragments: systemPromptFragments,
+      debug: debug,
+      surfaceOperations: surfaceOperations,
+      clientDataModel: clientDataModel,
+    );
+  }
+
   final GenuiXConfig _config;
   final Catalog _catalog;
   final http.Client _httpClient;
