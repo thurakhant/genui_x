@@ -15,6 +15,16 @@ void main() {
       expect(config.apiKeyPrefix, '');
       expect(config.headers, isEmpty);
       expect(config.streamFormat, GenuiXStreamFormat.anthropic);
+      expect(config.enforceJsonMode, isFalse);
+    });
+
+    test('GenuiXStreamFormat exposes a gemini variant', () {
+      expect(GenuiXStreamFormat.values, contains(GenuiXStreamFormat.gemini));
+    });
+
+    test('enforceJsonMode can be set', () {
+      const config = GenuiXConfig(apiKey: 'test-key', enforceJsonMode: true);
+      expect(config.enforceJsonMode, isTrue);
     });
 
     test('accepts custom model and baseUrl', () {
@@ -39,15 +49,16 @@ void main() {
         headers: const {'x-proxy': 'lite'},
         streamFormat: GenuiXStreamFormat.openai,
         requestBodyOverrides: const {
-          'response_format': {'type': 'json_object'}
+          'response_format': {'type': 'json_object'},
         },
       );
       expect(config.apiKeyHeader, 'authorization');
       expect(config.apiKeyPrefix, 'Bearer ');
       expect(config.headers['x-proxy'], 'lite');
       expect(config.streamFormat, GenuiXStreamFormat.openai);
-      expect(config.requestBodyOverrides['response_format'],
-          {'type': 'json_object'});
+      expect(config.requestBodyOverrides['response_format'], {
+        'type': 'json_object',
+      });
     });
   });
 

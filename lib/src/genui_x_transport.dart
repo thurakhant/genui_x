@@ -8,9 +8,10 @@ import 'package:flutter/foundation.dart';
 import 'package:genui/genui.dart';
 import 'package:http/http.dart' as http;
 
-import 'claude_config.dart';
+import 'anthropic_sse_parser.dart';
+import 'gemini_sse_parser.dart';
+import 'genui_x_config.dart';
 import 'openai_sse_parser.dart';
-import 'sse_parser.dart';
 
 /// A [Transport] implementation that connects any AI backend to genui.
 ///
@@ -74,6 +75,10 @@ class GenuiXTransport implements Transport {
   /// - [requestBodyOverrides] — raw JSON fields merged into the request body,
   ///   useful for provider-specific options like `response_format`.
   ///
+  /// ### Retries
+  /// - [maxRetries] — number of automatic retries on 429 responses with
+  ///   exponential backoff. Defaults to `3`. Set to `0` to disable.
+  ///
   /// ### Debugging
   /// - [debug] — when `true`, prints request URL, status code, and errors
   ///   via [debugPrint]. Useful for diagnosing proxy configuration issues.
@@ -95,25 +100,29 @@ class GenuiXTransport implements Transport {
     bool debug = false,
     SurfaceOperations? surfaceOperations,
     Map<String, Object?>? clientDataModel,
-  })  : _config = GenuiXConfig(
-          apiKey: apiKey,
-          model: model ?? 'claude-haiku-4-5-20251001',
-          baseUrl: baseUrl ?? 'https://api.anthropic.com',
-          endpointPath: endpointPath,
-          maxTokens: maxTokens,
-          apiKeyHeader: apiKeyHeader,
-          apiKeyPrefix: apiKeyPrefix,
-          headers: headers,
-          streamFormat: streamFormat,
-          requestBodyOverrides: requestBodyOverrides,
-          systemPromptFragments: systemPromptFragments,
-          debug: debug,
-          surfaceOperations: surfaceOperations,
-          clientDataModel: clientDataModel,
-        ),
-        _catalog = catalog,
-        _httpClient = httpClient ?? http.Client(),
-        _adapter = A2uiTransportAdapter();
+    int maxRetries = 3,
+    bool enforceJsonMode = false,
+  }) : _config = GenuiXConfig(
+         apiKey: apiKey,
+         model: model ?? 'claude-haiku-4-5-20251001',
+         baseUrl: baseUrl ?? 'https://api.anthropic.com',
+         endpointPath: endpointPath,
+         maxTokens: maxTokens,
+         apiKeyHeader: apiKeyHeader,
+         apiKeyPrefix: apiKeyPrefix,
+         headers: headers,
+         streamFormat: streamFormat,
+         requestBodyOverrides: requestBodyOverrides,
+         systemPromptFragments: systemPromptFragments,
+         debug: debug,
+         surfaceOperations: surfaceOperations,
+         clientDataModel: clientDataModel,
+         maxRetries: maxRetries,
+         enforceJsonMode: enforceJsonMode,
+       ),
+       _catalog = catalog,
+       _httpClient = httpClient ?? http.Client(),
+       _adapter = A2uiTransportAdapter();
 
   /// Creates a [GenuiXTransport] pre-configured for OpenAI-compatible backends.
   ///
@@ -151,6 +160,8 @@ class GenuiXTransport implements Transport {
     bool debug = false,
     SurfaceOperations? surfaceOperations,
     Map<String, Object?>? clientDataModel,
+    int maxRetries = 3,
+    bool enforceJsonMode = false,
   }) {
     return GenuiXTransport(
       apiKey: apiKey,
@@ -169,6 +180,127 @@ class GenuiXTransport implements Transport {
       debug: debug,
       surfaceOperations: surfaceOperations,
       clientDataModel: clientDataModel,
+      maxRetries: maxRetries,
+      enforceJsonMode: enforceJsonMode,
+    );
+  }
+
+  /// Creates a [GenuiXTransport] pre-configured for Anthropic Claude.
+  ///
+  /// Sets the correct `x-api-key` header, `/v1/messages` endpoint, and
+  /// Anthropic SSE stream format automatically — mirrors [GenuiXTransport.openai]
+  /// for symmetry and explicit defaults.
+  ///
+  /// ```dart
+  /// final transport = GenuiXTransport.anthropic(
+  ///   apiKey: 'your-anthropic-key',
+  ///   catalog: myCatalog,
+  /// );
+  /// ```
+  ///
+  /// Override [model] for a different Claude version:
+  /// ```dart
+  /// GenuiXTransport.anthropic(
+  ///   apiKey: 'your-key',
+  ///   catalog: myCatalog,
+  ///   model: 'claude-sonnet-4-6',
+  /// );
+  /// ```
+  factory GenuiXTransport.anthropic({
+    required String apiKey,
+    required Catalog catalog,
+    String model = 'claude-haiku-4-5-20251001',
+    String baseUrl = 'https://api.anthropic.com',
+    int maxTokens = 8192,
+    http.Client? httpClient,
+    Map<String, String> headers = const <String, String>{},
+    Map<String, Object?> requestBodyOverrides = const <String, Object?>{},
+    List<String> systemPromptFragments = const <String>[],
+    bool debug = false,
+    SurfaceOperations? surfaceOperations,
+    Map<String, Object?>? clientDataModel,
+    int maxRetries = 3,
+  }) {
+    return GenuiXTransport(
+      apiKey: apiKey,
+      catalog: catalog,
+      model: model,
+      baseUrl: baseUrl,
+      endpointPath: '/v1/messages',
+      maxTokens: maxTokens,
+      httpClient: httpClient,
+      apiKeyHeader: 'x-api-key',
+      apiKeyPrefix: '',
+      headers: headers,
+      streamFormat: GenuiXStreamFormat.anthropic,
+      requestBodyOverrides: requestBodyOverrides,
+      systemPromptFragments: systemPromptFragments,
+      debug: debug,
+      surfaceOperations: surfaceOperations,
+      clientDataModel: clientDataModel,
+      maxRetries: maxRetries,
+    );
+  }
+
+  /// Creates a [GenuiXTransport] pre-configured for Google Gemini.
+  ///
+  /// Sets the correct `x-goog-api-key` header, the
+  /// `/v1beta/models/{model}:streamGenerateContent` endpoint with `?alt=sse`,
+  /// and the Gemini SSE stream format automatically.
+  ///
+  /// Works with `gemini-2.5-flash`, `gemini-2.5-pro`, and any Vertex AI or
+  /// proxy endpoint that mirrors the Generative Language API surface.
+  ///
+  /// ```dart
+  /// final transport = GenuiXTransport.gemini(
+  ///   apiKey: 'your-google-api-key',
+  ///   catalog: myCatalog,
+  /// );
+  /// ```
+  ///
+  /// Override [model] for a different Gemini variant:
+  /// ```dart
+  /// GenuiXTransport.gemini(
+  ///   apiKey: 'your-key',
+  ///   catalog: myCatalog,
+  ///   model: 'gemini-2.5-pro',
+  /// );
+  /// ```
+  factory GenuiXTransport.gemini({
+    required String apiKey,
+    required Catalog catalog,
+    String model = 'gemini-2.5-flash',
+    String baseUrl = 'https://generativelanguage.googleapis.com',
+    int maxTokens = 8192,
+    http.Client? httpClient,
+    Map<String, String> headers = const <String, String>{},
+    Map<String, Object?> requestBodyOverrides = const <String, Object?>{},
+    List<String> systemPromptFragments = const <String>[],
+    bool debug = false,
+    SurfaceOperations? surfaceOperations,
+    Map<String, Object?>? clientDataModel,
+    int maxRetries = 3,
+  }) {
+    return GenuiXTransport(
+      apiKey: apiKey,
+      catalog: catalog,
+      model: model,
+      baseUrl: baseUrl,
+      // {model} placeholder is substituted at request time. The Gemini
+      // endpoint embeds the model in the URL path.
+      endpointPath: '/v1beta/models/{model}:streamGenerateContent?alt=sse',
+      maxTokens: maxTokens,
+      httpClient: httpClient,
+      apiKeyHeader: 'x-goog-api-key',
+      apiKeyPrefix: '',
+      headers: headers,
+      streamFormat: GenuiXStreamFormat.gemini,
+      requestBodyOverrides: requestBodyOverrides,
+      systemPromptFragments: systemPromptFragments,
+      debug: debug,
+      surfaceOperations: surfaceOperations,
+      clientDataModel: clientDataModel,
+      maxRetries: maxRetries,
     );
   }
 
@@ -176,8 +308,9 @@ class GenuiXTransport implements Transport {
   final Catalog _catalog;
   final http.Client _httpClient;
   final A2uiTransportAdapter _adapter;
-  final _sseParser = ClaudeSseParser();
+  final _anthropicSseParser = AnthropicSseParser();
   final _openaiSseParser = OpenAiSseParser();
+  final _geminiSseParser = GeminiSseParser();
 
   /// Whether a request is currently in flight.
   ///
@@ -190,19 +323,20 @@ class GenuiXTransport implements Transport {
   StreamSubscription<String>? _currentStream;
 
   // Cached system prompt (built once from catalog + user fragments)
-  late final String _systemPrompt = (_config.surfaceOperations != null
-          ? PromptBuilder.custom(
-              catalog: _catalog,
-              allowedOperations: _config.surfaceOperations!,
-              systemPromptFragments: _config.systemPromptFragments,
-              clientDataModel: _config.clientDataModel,
-            )
-          : PromptBuilder.chat(
-              catalog: _catalog,
-              systemPromptFragments: _config.systemPromptFragments,
-              clientDataModel: _config.clientDataModel,
-            ))
-      .systemPromptJoined();
+  late final String _systemPrompt =
+      (_config.surfaceOperations != null
+              ? PromptBuilder.custom(
+                  catalog: _catalog,
+                  allowedOperations: _config.surfaceOperations!,
+                  systemPromptFragments: _config.systemPromptFragments,
+                  clientDataModel: _config.clientDataModel,
+                )
+              : PromptBuilder.chat(
+                  catalog: _catalog,
+                  systemPromptFragments: _config.systemPromptFragments,
+                  clientDataModel: _config.clientDataModel,
+                ))
+          .systemPromptJoined();
 
   /// Stream of parsed A2UI messages from the AI response.
   ///
@@ -242,13 +376,48 @@ class GenuiXTransport implements Transport {
   /// as a text chunk rather than thrown, so the conversation continues.
   @override
   Future<void> sendRequest(ChatMessage message) async {
-    _history.add(_toClaudeMessage(message));
+    _history.add(_toMessage(message));
     isLoading.value = true;
 
+    try {
+      final assistantText = await _sendWithRetry();
+      if (assistantText.isNotEmpty) {
+        _history.add({'role': 'assistant', 'content': assistantText});
+      }
+    } finally {
+      _currentStream = null;
+      isLoading.value = false;
+    }
+  }
+
+  /// Attempts the request, retrying on 429 with exponential backoff.
+  Future<String> _sendWithRetry() async {
+    int attempt = 0;
+    while (true) {
+      try {
+        return await _collectStream();
+      } on GenuiXRateLimitError catch (e) {
+        if (attempt >= _config.maxRetries) rethrow;
+        final delay = e.retryAfter != null
+            ? Duration(seconds: e.retryAfter!)
+            : Duration(seconds: 1 << attempt);
+        if (_config.debug) {
+          debugPrint(
+            '[genui_x] rate limited — retry ${attempt + 1}/${_config.maxRetries} in ${delay.inSeconds}s',
+          );
+        }
+        await Future.delayed(delay);
+        attempt++;
+      }
+    }
+  }
+
+  /// Runs one HTTP attempt, collecting streamed chunks into a string.
+  Future<String> _collectStream() async {
     final buffer = StringBuffer();
     final completer = Completer<void>();
 
-    _currentStream = _streamClaude().listen(
+    _currentStream = _streamLlm().listen(
       (chunk) {
         _adapter.addChunk(chunk);
         buffer.write(chunk);
@@ -270,32 +439,18 @@ class GenuiXTransport implements Transport {
       cancelOnError: true,
     );
 
-    try {
-      await completer.future;
-    } finally {
-      _currentStream = null;
-      isLoading.value = false;
-      final assistantText = buffer.toString();
-      if (assistantText.isNotEmpty) {
-        _history.add({'role': 'assistant', 'content': assistantText});
-      }
-    }
+    await completer.future;
+    _currentStream = null;
+    return buffer.toString();
   }
 
-  /// Streams text chunks from the Claude Messages API.
-  Stream<String> _streamClaude() async* {
-    final uri = Uri.parse(_config.baseUrl).resolve(_config.endpointPath);
+  /// Streams text chunks from the configured AI backend.
+  Stream<String> _streamLlm() async* {
+    final uri = _buildUri();
     if (_config.debug) {
       debugPrint('[genui_x] POST $uri (model: ${_config.model})');
     }
-    final payload = <String, Object?>{
-      'model': _config.model,
-      'max_tokens': _config.maxTokens,
-      'system': _systemPrompt,
-      'messages': _history,
-      'stream': true,
-    };
-    payload.addAll(_config.requestBodyOverrides);
+    final payload = _buildPayload();
     final body = jsonEncode(payload);
 
     final headers = <String, String>{'content-type': 'application/json'};
@@ -331,9 +486,7 @@ class GenuiXTransport implements Transport {
 
     if (response.statusCode == 429) {
       final body = await response.stream.bytesToString();
-      final retryAfter = int.tryParse(
-        response.headers['retry-after'] ?? '',
-      );
+      final retryAfter = int.tryParse(response.headers['retry-after'] ?? '');
       if (_config.debug) {
         debugPrint('[genui_x] rate limited — retry-after: $retryAfter');
       }
@@ -346,17 +499,92 @@ class GenuiXTransport implements Transport {
       throw GenuiXApiError(response.statusCode, body);
     }
 
-    if (_config.streamFormat == GenuiXStreamFormat.openai) {
-      yield* _openaiSseParser.parse(response.stream);
-    } else {
-      yield* _sseParser.parse(response.stream);
+    switch (_config.streamFormat) {
+      case GenuiXStreamFormat.openai:
+        yield* _openaiSseParser.parse(response.stream);
+      case GenuiXStreamFormat.gemini:
+        yield* _geminiSseParser.parse(response.stream);
+      case GenuiXStreamFormat.anthropic:
+        yield* _anthropicSseParser.parse(response.stream);
     }
   }
 
-  /// Converts a [ChatMessage] to Claude's messages format.
-  Map<String, dynamic> _toClaudeMessage(ChatMessage message) {
+  /// Builds the request URI for the active stream format.
+  ///
+  /// Substitutes the `{model}` placeholder in [GenuiXConfig.endpointPath]
+  /// (used by the Gemini endpoint where the model is part of the URL path).
+  Uri _buildUri() {
+    final path = _config.endpointPath.replaceAll(
+      '{model}',
+      Uri.encodeComponent(_config.model),
+    );
+    return Uri.parse(_config.baseUrl).resolve(path);
+  }
+
+  /// Builds the provider-specific request body.
+  Map<String, Object?> _buildPayload() {
+    switch (_config.streamFormat) {
+      case GenuiXStreamFormat.gemini:
+        final payload = <String, Object?>{
+          'contents': _history.map(_toGeminiContent).toList(),
+          'systemInstruction': {
+            'parts': [
+              {'text': _systemPrompt},
+            ],
+          },
+          'generationConfig': {'maxOutputTokens': _config.maxTokens},
+        };
+        payload.addAll(_config.requestBodyOverrides);
+        return payload;
+      case GenuiXStreamFormat.openai:
+        final payload = <String, Object?>{
+          'model': _config.model,
+          'max_tokens': _config.maxTokens,
+          'system': _systemPrompt,
+          'messages': _history,
+          'stream': true,
+        };
+        if (_config.enforceJsonMode &&
+            !_config.requestBodyOverrides.containsKey('response_format')) {
+          payload['response_format'] = const {'type': 'json_object'};
+        }
+        payload.addAll(_config.requestBodyOverrides);
+        return payload;
+      case GenuiXStreamFormat.anthropic:
+        final payload = <String, Object?>{
+          'model': _config.model,
+          'max_tokens': _config.maxTokens,
+          'system': _systemPrompt,
+          'messages': _history,
+          'stream': true,
+        };
+        payload.addAll(_config.requestBodyOverrides);
+        return payload;
+    }
+  }
+
+  /// Converts a [ChatMessage] to the `{role, content}` shape used by both
+  /// the Anthropic Messages API and OpenAI Chat Completions API.
+  ///
+  /// The Gemini path converts these entries to its own `contents` shape via
+  /// [_toGeminiContent] at request time.
+  Map<String, dynamic> _toMessage(ChatMessage message) {
     final role = message.role == ChatMessageRole.model ? 'assistant' : 'user';
     return {'role': role, 'content': message.text};
+  }
+
+  /// Converts a stored history entry (`{role, content}`) into Gemini's
+  /// `contents` shape: `{role: 'user'|'model', parts: [{text: ...}]}`.
+  Map<String, Object?> _toGeminiContent(Map<String, dynamic> entry) {
+    final role = entry['role'] == 'assistant' ? 'model' : 'user';
+    final content = entry['content'];
+    final text = content is String ? content : content?.toString() ?? '';
+    return {
+      'role': role,
+      'parts': [
+        {'text': text},
+      ],
+    };
   }
 
   @override
@@ -400,7 +628,8 @@ class GenuiXRateLimitError implements Exception {
   final String body;
 
   @override
-  String toString() => 'GenuiXRateLimitError: Rate limited.'
+  String toString() =>
+      'GenuiXRateLimitError: Rate limited.'
       '${retryAfter != null ? ' Retry after ${retryAfter}s.' : ''} $body';
 }
 

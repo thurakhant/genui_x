@@ -90,8 +90,8 @@ class _ProxyChatPageState extends State<ProxyChatPage> {
       model: widget.model,
       baseUrl: widget.baseUrl,
       endpointPath: '/v1/chat/completions', // OpenAI-style endpoint
-      apiKeyHeader: 'authorization',        // Authorization header
-      apiKeyPrefix: 'Bearer ',              // Bearer token format
+      apiKeyHeader: 'authorization', // Authorization header
+      apiKeyPrefix: 'Bearer ', // Bearer token format
       streamFormat: GenuiXStreamFormat.openai,
       debug: true, // remove in production
     );

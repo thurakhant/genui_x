@@ -72,7 +72,7 @@ Every source file must include the BSD-3-Clause license header:
 ### Imports
 
 - Use package imports for external packages: `import 'package:genui/genui.dart';`
-- Use relative imports for internal files: `import 'claude_config.dart';`
+- Use relative imports for internal files: `import 'genui_x_config.dart';`
 - Group imports in this order: dart:, external packages, internal packages
 - Use `as` prefix for package aliases when needed
 
@@ -83,16 +83,16 @@ import 'dart:convert';
 import 'package:genui/genui.dart';
 import 'package:http/http.dart' as http;
 
-import 'claude_config.dart';
-import 'sse_parser.dart';
+import 'anthropic_sse_parser.dart';
+import 'genui_x_config.dart';
 ```
 
 ### Naming Conventions
 
-- **Classes**: `PascalCase` (e.g., `ClaudeTransport`, `ClaudeApiException`)
+- **Classes**: `PascalCase` (e.g., `GenuiXTransport`, `GenuiXApiError`)
 - **Constants**: `camelCase` with `k` prefix for const objects (e.g., `kDefaultModel`)
 - **Variables/Methods**: `camelCase` (e.g., `apiKey`, `sendRequest`)
-- **Files**: `snake_case` (e.g., `claude_transport.dart`, `sse_parser.dart`)
+- **Files**: `snake_case`. Public/package-namespaced files use the `genui_x_` prefix (e.g., `genui_x_transport.dart`, `genui_x_config.dart`); per-vendor parsers use the vendor name (e.g., `anthropic_sse_parser.dart`, `openai_sse_parser.dart`, `gemini_sse_parser.dart`)
 - **Private members**: prefix with `_` (e.g., `_config`, `_history`)
 
 ### Type Annotations
@@ -103,8 +103,8 @@ import 'sse_parser.dart';
 
 ```dart
 // Good
-class ClaudeConfig {
-  const ClaudeConfig({
+class GenuiXConfig {
+  const GenuiXConfig({
     required this.apiKey,
     this.model = 'claude-haiku-4-5-20251001',
   });
@@ -121,15 +121,14 @@ class ClaudeConfig {
 - Keep documentation concise but complete
 
 ```dart
-/// A [Transport] implementation that uses Anthropic's Claude API.
-///
-/// Connects the genui framework to Claude by generating A2UI JSON messages.
-class ClaudeTransport implements Transport {
-  /// Creates a [ClaudeTransport].
+/// A [Transport] implementation that streams A2UI JSON from a configurable
+/// LLM backend (Anthropic, OpenAI-compatible, or Gemini).
+class GenuiXTransport implements Transport {
+  /// Creates a [GenuiXTransport].
   ///
   /// [apiKey] is required. All other parameters are optional.
   /// [catalog] defines the UI components the AI can generate.
-  ClaudeTransport({
+  GenuiXTransport({
     required String apiKey,
     required Catalog catalog,
   });
@@ -143,14 +142,14 @@ class ClaudeTransport implements Transport {
 - Prefer specific exception types over generic `Exception`
 
 ```dart
-class ClaudeApiException implements Exception {
-  const ClaudeApiException(this.statusCode, this.message);
+class GenuiXApiError implements Exception {
+  const GenuiXApiError(this.statusCode, this.message);
 
   final int statusCode;
   final String message;
 
   @override
-  String toString() => 'ClaudeApiException($statusCode): $message';
+  String toString() => 'GenuiXApiError($statusCode): $message';
 }
 ```
 
@@ -167,9 +166,9 @@ class ClaudeApiException implements Exception {
 - Use descriptive test names that explain expected behavior
 
 ```dart
-group('ClaudeConfig', () {
+group('GenuiXConfig', () {
   test('has correct defaults', () {
-    const config = ClaudeConfig(apiKey: 'test-key');
+    const config = GenuiXConfig(apiKey: 'test-key');
     expect(config.model, 'claude-haiku-4-5-20251001');
   });
 });
@@ -183,12 +182,12 @@ group('ClaudeConfig', () {
 
 ```dart
 try {
-  await for (final chunk in _streamClaude()) {
+  await for (final chunk in _streamLlm()) {
     _adapter.addChunk(chunk);
   }
-} on ClaudeAuthException {
+} on GenuiXAuthError {
   rethrow;
-} on ClaudeApiException catch (e) {
+} on GenuiXApiError catch (e) {
   _adapter.addChunk('\n\nSorry, I encountered an error: ${e.message}');
 }
 ```
@@ -199,7 +198,7 @@ try {
 
 The genui framework (`package:genui` ^0.8.0) uses the **A2UI v0.9 protocol** for AI→UI communication:
 
-1. **`createSurface` before `updateComponents`**: Claude must always emit `createSurface` (with `surfaceId` + `catalogId`) before `updateComponents`. `SurfaceController` buffers `updateComponents` for unknown surfaces — if `createSurface` never arrives, nothing renders. `PromptBuilder.chat` already instructs this; never override it in user messages.
+1. **`createSurface` before `updateComponents`**: The model must always emit `createSurface` (with `surfaceId` + `catalogId`) before `updateComponents`. `SurfaceController` buffers `updateComponents` for unknown surfaces — if `createSurface` never arrives, nothing renders. `PromptBuilder.chat` already instructs this; never override it in user messages.
 
 2. **`"id"` is required in every component**: `Component.fromJson` hard-casts `json['id'] as String`. A missing `id` throws `type 'Null' is not a subtype of type 'String'`. Always include `"id"` in JSON examples in system prompt fragments.
 
@@ -233,16 +232,18 @@ Example well-formed `updateComponents`:
 | File | Purpose |
 |------|---------|
 | `lib/genui_x.dart` | Public exports |
-| `lib/src/claude_transport.dart` | Main `Transport` implementation |
-| `lib/src/claude_config.dart` | Configuration class |
-| `lib/src/sse_parser.dart` | SSE stream parser |
+| `lib/src/genui_x_transport.dart` | Main `Transport` implementation (`GenuiXTransport`) with `.openai()`, `.anthropic()`, `.gemini()` factories |
+| `lib/src/genui_x_config.dart` | `GenuiXConfig` value object and `GenuiXStreamFormat` enum |
+| `lib/src/anthropic_sse_parser.dart` | Anthropic Messages API SSE parser |
+| `lib/src/openai_sse_parser.dart` | OpenAI Chat Completions SSE parser |
+| `lib/src/gemini_sse_parser.dart` | Gemini `streamGenerateContent` SSE parser |
 
 ### Key Interfaces
 
 - `Transport` - genui's transport interface (from `package:genui`)
-- `ClaudeTransport` - main implementation
-- `ClaudeConfig` - configuration holder
-- `ClaudeSseParser` - parses Server-Sent Events from Claude API
+- `GenuiXTransport` - main implementation
+- `GenuiXConfig` - configuration holder
+- `AnthropicSseParser` / `OpenAiSseParser` / `GeminiSseParser` - per-vendor SSE parsers (internal)
 
 ### Dependencies
 

@@ -4,18 +4,17 @@
 import 'dart:async';
 import 'dart:convert';
 
-/// Parses Claude's Server-Sent Events (SSE) stream into text delta chunks.
+/// Parses Anthropic's Messages API Server-Sent Events (SSE) stream into
+/// text delta chunks.
 ///
 /// Only `text_delta` events are emitted; all other event types are ignored.
-class ClaudeSseParser {
+class AnthropicSseParser {
   /// Transforms a raw byte stream from the Anthropic Messages API into
   /// a stream of text delta strings.
   Stream<String> parse(Stream<List<int>> byteStream) {
-    return _parseLines(byteStream).transform(
-      StreamTransformer.fromHandlers(
-        handleData: _handleLine,
-      ),
-    );
+    return _parseLines(
+      byteStream,
+    ).transform(StreamTransformer.fromHandlers(handleData: _handleLine));
   }
 
   void _handleLine(String line, EventSink<String> sink) {

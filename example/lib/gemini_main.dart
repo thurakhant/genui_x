@@ -1,3 +1,13 @@
+// Copyright 2025 genui_x contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+//
+// Gemini example — shows how to connect genui_x to Google's Gemini API
+// using the GenuiXTransport.gemini() factory.
+//
+// Run with:
+//   flutter run -t lib/gemini_main.dart \
+//     --dart-define=GEMINI_API_KEY=your-google-api-key
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -6,46 +16,46 @@ import 'package:genui_x/genui_x.dart';
 import 'package:json_schema_builder/json_schema_builder.dart';
 
 void main() {
-  // Set your Claude API key via --dart-define=CLAUDE_API_KEY=sk-ant-...
-  const apiKey = String.fromEnvironment('CLAUDE_API_KEY');
+  const apiKey = String.fromEnvironment('GEMINI_API_KEY');
   if (apiKey.isEmpty) {
     throw Exception(
-      'CLAUDE_API_KEY not set. '
-      'Run with: flutter run --dart-define=CLAUDE_API_KEY=your_key',
+      'GEMINI_API_KEY not set. '
+      'Run with: flutter run -t lib/gemini_main.dart '
+      '--dart-define=GEMINI_API_KEY=your_key',
     );
   }
 
-  runApp(GenUiXExampleApp(apiKey: apiKey));
+  runApp(GeminiExampleApp(apiKey: apiKey));
 }
 
-class GenUiXExampleApp extends StatelessWidget {
-  const GenUiXExampleApp({super.key, required this.apiKey});
+class GeminiExampleApp extends StatelessWidget {
+  const GeminiExampleApp({super.key, required this.apiKey});
 
   final String apiKey;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'GenUI X Example',
+      title: 'GenUI X — Gemini',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: ChatPage(apiKey: apiKey),
+      home: GeminiChatPage(apiKey: apiKey),
     );
   }
 }
 
-class ChatPage extends StatefulWidget {
-  const ChatPage({super.key, required this.apiKey});
+class GeminiChatPage extends StatefulWidget {
+  const GeminiChatPage({super.key, required this.apiKey});
 
   final String apiKey;
 
   @override
-  State<ChatPage> createState() => _ChatPageState();
+  State<GeminiChatPage> createState() => _GeminiChatPageState();
 }
 
-class _ChatPageState extends State<ChatPage> {
+class _GeminiChatPageState extends State<GeminiChatPage> {
   late final GenuiXTransport _transport;
   late final SurfaceController _controller;
   late final Conversation _conversation;
@@ -53,23 +63,25 @@ class _ChatPageState extends State<ChatPage> {
   final _textController = TextEditingController();
   bool _isWaiting = false;
   String _assistantText = '';
-  String _displayedText = '';
   String? _errorText;
-  Timer? _typingTimer;
 
   @override
   void initState() {
     super.initState();
-    const baseUrl = String.fromEnvironment(
-      'CLAUDE_BASE_URL',
-      defaultValue: 'https://api.anthropic.com',
+    const model = String.fromEnvironment(
+      'GEMINI_MODEL',
+      defaultValue: 'gemini-2.5-flash',
     );
-    _transport = GenuiXTransport(
+
+    // ── Transport configuration for Google Gemini ────────────────────────
+    _transport = GenuiXTransport.gemini(
       apiKey: widget.apiKey,
       catalog: weatherCatalog,
-      baseUrl: baseUrl,
-      model: 'claude-sonnet-4-6', // Uncomment for higher quality
+      model: model,
+      debug: true, // remove in production
     );
+    // ─────────────────────────────────────────────────────────────────────
+
     _controller = SurfaceController(catalogs: [weatherCatalog]);
     _conversation = Conversation(
       controller: _controller,
@@ -83,7 +95,6 @@ class _ChatPageState extends State<ChatPage> {
           _errorText = null;
           _isWaiting = false;
         });
-        _startTypingAnimation(event.text);
       } else if (event is ConversationWaiting) {
         setState(() => _isWaiting = true);
       } else if (event is ConversationError) {
@@ -100,42 +111,11 @@ class _ChatPageState extends State<ChatPage> {
 
   @override
   void dispose() {
-    _typingTimer?.cancel();
     _conversation.dispose();
     _controller.dispose();
     _transport.dispose();
     _textController.dispose();
     super.dispose();
-  }
-
-  void _startTypingAnimation(String text) {
-    _typingTimer?.cancel();
-    if (text.isEmpty) {
-      setState(() => _displayedText = '');
-      return;
-    }
-
-    if (text.length <= _displayedText.length) {
-      setState(() => _displayedText = text);
-      return;
-    }
-
-    var index = _displayedText.length;
-    _typingTimer = Timer.periodic(
-      const Duration(milliseconds: 16),
-      (timer) {
-        if (!mounted) {
-          timer.cancel();
-          return;
-        }
-        index += 2;
-        if (index >= text.length) {
-          index = text.length;
-          timer.cancel();
-        }
-        setState(() => _displayedText = text.substring(0, index));
-      },
-    );
   }
 
   Future<void> _sendMessage() async {
@@ -157,7 +137,7 @@ class _ChatPageState extends State<ChatPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('GenUI + X'),
+        title: const Text('GenUI + X — Gemini'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
       body: Column(
@@ -178,7 +158,7 @@ class _ChatPageState extends State<ChatPage> {
             Padding(
               padding: const EdgeInsets.all(12),
               child: Text(
-                _displayedText,
+                _assistantText,
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
             ),
@@ -262,32 +242,32 @@ class WeatherWidget extends StatelessWidget {
   }
 }
 
-final weatherCatalogItem = CatalogItem(
-  name: 'WeatherWidget',
-  dataSchema: S.object(
-    description: 'Displays current weather information for a city.',
-    properties: {
-      'city': S.string(description: 'The city name.'),
-      'temperature': S.number(description: 'Temperature in Celsius.'),
-      'condition': S.string(
-        description: 'A short description of the weather condition.',
-      ),
-    },
-    required: ['city', 'temperature', 'condition'],
-  ),
-  widgetBuilder: (ctx) {
-    final data = ctx.data as Map<String, dynamic>;
-    return WeatherWidget(
-      city: data['city'] as String,
-      temperature: (data['temperature'] as num).toDouble(),
-      condition: data['condition'] as String,
-    );
-  },
-);
-
 final weatherCatalog = Catalog(
-  [weatherCatalogItem],
-  catalogId: 'default',
+  [
+    CatalogItem(
+      name: 'WeatherWidget',
+      dataSchema: S.object(
+        description: 'Displays current weather information for a city.',
+        properties: {
+          'city': S.string(description: 'The city name.'),
+          'temperature': S.number(description: 'Temperature in Celsius.'),
+          'condition': S.string(
+            description: 'A short description of the weather condition.',
+          ),
+        },
+        required: ['city', 'temperature', 'condition'],
+      ),
+      widgetBuilder: (ctx) {
+        final data = ctx.data as Map<String, dynamic>;
+        return WeatherWidget(
+          city: data['city'] as String,
+          temperature: (data['temperature'] as num).toDouble(),
+          condition: data['condition'] as String,
+        );
+      },
+    ),
+  ],
+  catalogId: 'gemini.example.catalog',
   systemPromptFragments: [
     'When the user asks about weather, use the WeatherWidget component '
         'to display the information visually.',

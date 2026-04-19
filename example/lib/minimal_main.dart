@@ -88,7 +88,8 @@ class _MinimalChatPageState extends State<MinimalChatPage> {
           _isWaiting = false;
           _errorText = event.error.toString();
         });
-      } else if (event is ConversationSurfaceAdded || event is ConversationComponentsUpdated) {
+      } else if (event is ConversationSurfaceAdded ||
+          event is ConversationComponentsUpdated) {
         setState(() => _isWaiting = false);
       }
     });
