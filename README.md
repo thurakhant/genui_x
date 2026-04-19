@@ -3,10 +3,38 @@
 [![pub package](https://img.shields.io/pub/v/genui_x.svg)](https://pub.dev/packages/genui_x)
 [![pub points](https://img.shields.io/pub/points/genui_x.svg)](https://pub.dev/packages/genui_x/score)
 [![likes](https://img.shields.io/pub/likes/genui_x.svg)](https://pub.dev/packages/genui_x/score)
+[![CI](https://github.com/thurakhant/genui_x/actions/workflows/ci.yml/badge.svg)](https://github.com/thurakhant/genui_x/actions/workflows/ci.yml)
 
-A lightweight AI backend adapter for Google's [genui](https://pub.dev/packages/genui) (Generative UI) framework.
+> **The missing backend for [Google's genui](https://pub.dev/packages/genui) framework.** One `Transport`, every major LLM — Anthropic Claude, OpenAI, Google Gemini, local Ollama, or any OpenAI-compatible proxy.
 
-Connect any AI backend — Anthropic Claude, OpenAI, OpenRouter, LiteLLM, or your own proxy — to genui with a single class.
+<!--
+  Demo GIF placeholder — record ~15 s of `example/lib/travel_main.dart`
+  (prompt → streamed widget) and drop the file at `screenshots/demo.gif`,
+  then uncomment the line below.
+
+![genui_x demo](screenshots/demo.gif)
+-->
+
+```dart
+final transport = GenuiXTransport.anthropic(  // or .openai() / .gemini() / .ollama()
+  apiKey: const String.fromEnvironment('CLAUDE_API_KEY'),
+  catalog: myCatalog,
+);
+```
+
+`genui` defines *what* the AI can render. `genui_x` connects it to *who* generates it.
+
+## Provider matrix
+
+| Provider | Factory | Streaming | JSON mode | Auth header | Default model |
+|---|---|:-:|:-:|---|---|
+| Anthropic Claude | `GenuiXTransport.anthropic()` | ✅ | n/a (Claude is JSON-friendly) | `x-api-key` | `claude-haiku-4-5-20251001` |
+| OpenAI / OpenRouter / LiteLLM | `GenuiXTransport.openai()` | ✅ | ✅ via `enforceJsonMode` | `Authorization: Bearer` | `gpt-4o-mini` |
+| Google Gemini | `GenuiXTransport.gemini()` | ✅ | n/a (uses `systemInstruction`) | `x-goog-api-key` | `gemini-2.5-flash` |
+| Ollama (local) | `GenuiXTransport.ollama()` | ✅ | ✅ via `enforceJsonMode` | `Authorization: Bearer` (placeholder) | `llama3.2` |
+| Custom proxy | `GenuiXTransport(...)` | ✅ | via `requestBodyOverrides` | configurable | configurable |
+
+All providers share the same retry-on-429, cancel, `clearHistory`, `isLoading`, and `debug` controls.
 
 ---
 
@@ -38,7 +66,7 @@ Your App
 # pubspec.yaml
 dependencies:
   genui: ^0.8.0
-  genui_x: ^0.0.11
+  genui_x: ^0.0.12
 ```
 
 ### 2. Create your catalog
@@ -152,6 +180,22 @@ Sends `x-goog-api-key`, posts to
 `candidates[*].content.parts[*].text` SSE stream. Override `baseUrl` to
 point at a Vertex AI gateway or your own proxy.
 
+### Ollama (local models)
+
+```dart
+final transport = GenuiXTransport.ollama(
+  catalog: myCatalog,
+  // model: 'llama3.2',                  // optional — default
+  // baseUrl: 'http://localhost:11434',  // optional — default
+  // enforceJsonMode: true,              // recommended for stricter A2UI output
+);
+```
+
+Wraps `GenuiXTransport.openai()` against Ollama's OpenAI-compatible
+endpoint. No API key is required by Ollama, but a placeholder bearer token
+(`ollama`) is sent so the OpenAI-compat layer accepts the request. Pull
+the model first with `ollama pull llama3.2`.
+
 ### OpenRouter / LiteLLM / custom proxy
 
 ```dart
@@ -264,6 +308,8 @@ final transport = GenuiXTransport(
 | OpenAI | `gpt-4o` | Higher quality |
 | Gemini | `gemini-2.5-flash` | Default for `.gemini()` — fast, low cost |
 | Gemini | `gemini-2.5-pro` | Higher quality |
+| Ollama | `llama3.2` | Default for `.ollama()` — local |
+| Ollama | any local model slug | e.g. `qwen2.5-coder`, `mistral` |
 | OpenRouter | any model slug | via `GenuiXTransport.openai(baseUrl: ...)` |
 
 ---
@@ -289,6 +335,13 @@ flutter run -t lib/proxy_main.dart \
 # Google Gemini
 flutter run -t lib/gemini_main.dart \
   --dart-define=GEMINI_API_KEY=your-google-api-key
+
+# Ollama (local — no API key)
+flutter run -t lib/ollama_main.dart
+# or with overrides:
+flutter run -t lib/ollama_main.dart \
+  --dart-define=OLLAMA_BASE_URL=http://192.168.1.50:11434 \
+  --dart-define=OLLAMA_MODEL=qwen2.5-coder
 ```
 
 ---

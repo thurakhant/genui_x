@@ -266,6 +266,61 @@ class GenuiXTransport implements Transport {
   ///   model: 'gemini-2.5-pro',
   /// );
   /// ```
+  /// Creates a [GenuiXTransport] pre-configured for a local Ollama server.
+  ///
+  /// Ollama exposes an OpenAI-compatible Chat Completions endpoint at
+  /// `/v1/chat/completions` on `http://localhost:11434` by default, so this
+  /// factory is a thin wrapper around [GenuiXTransport.openai] with sane
+  /// local-development defaults. No API key is required by Ollama itself, but
+  /// the OpenAI-compat layer expects a non-empty bearer token, so a placeholder
+  /// (`ollama`) is sent unless [apiKey] is overridden.
+  ///
+  /// ```dart
+  /// final transport = GenuiXTransport.ollama(
+  ///   catalog: myCatalog,
+  ///   // model: 'llama3.2',                    // optional — default
+  ///   // baseUrl: 'http://localhost:11434',    // optional — default
+  /// );
+  /// ```
+  ///
+  /// Local models are often inconsistent at emitting strict A2UI JSON. If
+  /// the server you point at supports OpenAI's `response_format`, set
+  /// [enforceJsonMode] to `true` for tighter compliance — Ollama does honour
+  /// `response_format: {type: "json_object"}` for models that support tools.
+  factory GenuiXTransport.ollama({
+    required Catalog catalog,
+    String model = 'llama3.2',
+    String baseUrl = 'http://localhost:11434',
+    String apiKey = 'ollama',
+    int maxTokens = 8192,
+    http.Client? httpClient,
+    Map<String, String> headers = const <String, String>{},
+    Map<String, Object?> requestBodyOverrides = const <String, Object?>{},
+    List<String> systemPromptFragments = const <String>[],
+    bool debug = false,
+    SurfaceOperations? surfaceOperations,
+    Map<String, Object?>? clientDataModel,
+    int maxRetries = 0,
+    bool enforceJsonMode = false,
+  }) {
+    return GenuiXTransport.openai(
+      apiKey: apiKey,
+      catalog: catalog,
+      model: model,
+      baseUrl: baseUrl,
+      maxTokens: maxTokens,
+      httpClient: httpClient,
+      headers: headers,
+      requestBodyOverrides: requestBodyOverrides,
+      systemPromptFragments: systemPromptFragments,
+      debug: debug,
+      surfaceOperations: surfaceOperations,
+      clientDataModel: clientDataModel,
+      maxRetries: maxRetries,
+      enforceJsonMode: enforceJsonMode,
+    );
+  }
+
   factory GenuiXTransport.gemini({
     required String apiKey,
     required Catalog catalog,

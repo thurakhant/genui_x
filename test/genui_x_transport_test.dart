@@ -694,6 +694,92 @@ void main() {
     });
   });
 
+  group('GenuiXTransport.ollama()', () {
+    test('defaults to localhost:11434 / v1/chat/completions', () async {
+      http.BaseRequest? captured;
+      final t = GenuiXTransport.ollama(
+        catalog: _catalog,
+        httpClient: _MockHttpClient((req) async {
+          captured = req;
+          return _response(401, 'stop');
+        }),
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      expect(captured!.url.host, 'localhost');
+      expect(captured!.url.port, 11434);
+      expect(captured!.url.path, '/v1/chat/completions');
+      t.dispose();
+    });
+
+    test('sends OpenAI-style Authorization Bearer header', () async {
+      http.BaseRequest? captured;
+      final t = GenuiXTransport.ollama(
+        catalog: _catalog,
+        httpClient: _MockHttpClient((req) async {
+          captured = req;
+          return _response(401, 'stop');
+        }),
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      expect(captured!.headers['authorization'], 'Bearer ollama');
+      t.dispose();
+    });
+
+    test('uses llama3.2 as default model', () async {
+      final client = _CapturingHttpClient();
+      final t = GenuiXTransport.ollama(catalog: _catalog, httpClient: client);
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      expect(client.lastRequestBody, contains('llama3.2'));
+      t.dispose();
+    });
+
+    test('respects custom baseUrl, model, and apiKey', () async {
+      http.BaseRequest? captured;
+      final t = GenuiXTransport.ollama(
+        catalog: _catalog,
+        baseUrl: 'http://192.168.1.50:11434',
+        model: 'qwen2.5-coder',
+        apiKey: 'custom-token',
+        httpClient: _MockHttpClient((req) async {
+          captured = req;
+          return _response(401, 'stop');
+        }),
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      expect(captured!.url.host, '192.168.1.50');
+      expect(captured!.headers['authorization'], 'Bearer custom-token');
+      t.dispose();
+    });
+
+    test('enforceJsonMode injects response_format json_object', () async {
+      final client = _CapturingHttpClient();
+      final t = GenuiXTransport.ollama(
+        catalog: _catalog,
+        enforceJsonMode: true,
+        httpClient: client,
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      expect(client.lastRequestBody, contains('"response_format"'));
+      expect(client.lastRequestBody, contains('"json_object"'));
+      t.dispose();
+    });
+  });
+
   group('GenuiXTransport.openai() — enforceJsonMode', () {
     test('does NOT inject response_format by default', () async {
       final client = _CapturingHttpClient();
