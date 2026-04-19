@@ -29,7 +29,8 @@ void main() {
     });
 
     test('handles multiple content deltas', () async {
-      const sse = 'data: {"choices":[{"delta":{"content":"Hello "}}]}\n\n'
+      const sse =
+          'data: {"choices":[{"delta":{"content":"Hello "}}]}\n\n'
           'data: {"choices":[{"delta":{"content":"world"}}]}\n\n';
 
       final chunks = await parser.parse(_toByteStream(sse)).toList();
@@ -37,7 +38,8 @@ void main() {
     });
 
     test('ignores non-content deltas', () async {
-      const sse = 'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\n'
+      const sse =
+          'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\n'
           'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n';
 
       final chunks = await parser.parse(_toByteStream(sse)).toList();
@@ -58,7 +60,8 @@ void main() {
     });
 
     test('ignores malformed JSON without crashing', () async {
-      const sse = 'data: {not valid json}\n\n'
+      const sse =
+          'data: {not valid json}\n\n'
           'data: {"choices":[{"delta":{"content":"OK"}}]}\n\n';
 
       final chunks = await parser.parse(_toByteStream(sse)).toList();

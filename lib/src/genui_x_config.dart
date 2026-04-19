@@ -10,9 +10,20 @@ enum GenuiXStreamFormat {
 
   /// OpenAI-style chat completions streaming format.
   openai,
+
+  /// Google Gemini `streamGenerateContent` (`?alt=sse`) streaming format.
+  gemini,
 }
 
-/// Configuration for the Claude AI adapter.
+/// Immutable configuration for [GenuiXTransport].
+///
+/// Holds the API key, target model, base URL, endpoint path, auth header
+/// names, stream format, and behavioural knobs (retries, JSON mode,
+/// surface operations, client data model, debug logging).
+///
+/// Defaults target Anthropic Claude. The [GenuiXTransport.openai],
+/// [GenuiXTransport.anthropic], and [GenuiXTransport.gemini] factories
+/// override the relevant fields for their respective providers.
 class GenuiXConfig {
   /// Creates a [GenuiXConfig].
   const GenuiXConfig({
@@ -32,15 +43,17 @@ class GenuiXConfig {
     this.surfaceOperations,
     this.clientDataModel,
     this.maxRetries = 3,
+    this.enforceJsonMode = false,
   });
 
   /// The Anthropic API key.
   final String apiKey;
 
-  /// The Claude model to use.
+  /// The model identifier sent to the backend.
   ///
-  /// Defaults to `claude-haiku-4-5-20251001` for cost efficiency.
-  /// Use `claude-sonnet-4-6` for higher quality responses.
+  /// Defaults to `claude-haiku-4-5-20251001` for cost efficiency. The
+  /// Anthropic, OpenAI, and Gemini factories override this default with a
+  /// provider-appropriate value (e.g. `gpt-4o-mini`, `gemini-2.5-flash`).
   final String model;
 
   /// The base URL for the Anthropic API.
@@ -86,8 +99,8 @@ class GenuiXConfig {
   /// Additional fragments to inject into the system prompt.
   ///
   /// These are passed directly to [PromptBuilder.chat] and prepended to the
-  /// generated catalog schema. Use them to give Claude a persona, restrict its
-  /// domain, inject the current date, or add any other instructions.
+  /// generated catalog schema. Use them to give the model a persona, restrict
+  /// its domain, inject the current date, or add any other instructions.
   ///
   /// Example:
   /// ```dart
@@ -140,4 +153,15 @@ class GenuiXConfig {
   ///
   /// Defaults to `3`.
   final int maxRetries;
+
+  /// When `true` and [streamFormat] is [GenuiXStreamFormat.openai], injects
+  /// `response_format: {"type": "json_object"}` into the request body so the
+  /// model is constrained to emit valid JSON — improves A2UI compliance on
+  /// OpenAI and OpenAI-compatible backends.
+  ///
+  /// Has no effect on Anthropic or Gemini formats. Ignored if the user
+  /// supplies their own `response_format` via [requestBodyOverrides].
+  ///
+  /// Defaults to `false`.
+  final bool enforceJsonMode;
 }

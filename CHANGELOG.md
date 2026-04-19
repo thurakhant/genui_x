@@ -1,3 +1,33 @@
+## 0.0.11
+
+* Add `GenuiXTransport.gemini()` factory — pre-configures Google's Generative
+  Language API endpoint (`/v1beta/models/{model}:streamGenerateContent?alt=sse`),
+  the `x-goog-api-key` header, and the Gemini SSE format. Works with
+  `gemini-2.5-flash`, `gemini-2.5-pro`, and Vertex AI / proxy endpoints that
+  mirror the Generative Language API surface.
+* Add `GenuiXStreamFormat.gemini` and a Gemini SSE parser (`GeminiSseParser`)
+  that extracts text from `candidates[*].content.parts[*].text`.
+* Add `enforceJsonMode` option on `GenuiXTransport.openai()` and
+  `GenuiXConfig` — when `true`, injects `response_format: {"type": "json_object"}`
+  for tighter A2UI compliance on OpenAI and OpenAI-compatible backends.
+  Respects user-supplied `requestBodyOverrides['response_format']`.
+* Add `example/lib/gemini_main.dart` — runnable Gemini chat demo.
+* Add GitHub Actions CI (`.github/workflows/ci.yml`) running
+  `flutter analyze` and `flutter test` on push and pull request.
+* Refactor request building: extract `_buildUri()` and `_buildPayload()`
+  in `GenuiXTransport` to keep provider-specific logic isolated. The
+  Anthropic and OpenAI request shapes are unchanged; this is a non-breaking
+  internal cleanup that supports the new Gemini path.
+* Internal rename pass — no public API change. `lib/src/claude_transport.dart`
+  → `genui_x_transport.dart`, `lib/src/claude_config.dart` →
+  `genui_x_config.dart`, `lib/src/sse_parser.dart` →
+  `anthropic_sse_parser.dart` (class `ClaudeSseParser` → `AnthropicSseParser`).
+  Internal `_streamClaude()` / `_toClaudeMessage()` / `_sseParser` are now
+  `_streamLlm()` / `_toMessage()` / `_anthropicSseParser`. Test files renamed
+  to match. AGENTS.md docs updated. The public surface
+  (`GenuiXTransport`, `GenuiXConfig`, `GenuiXStreamFormat`, errors) is
+  unchanged.
+
 ## 0.0.10
 
 * Add `GenuiXTransport.anthropic()` factory constructor — mirrors `.openai()` with explicit Anthropic defaults (`x-api-key` header, `/v1/messages` endpoint, Anthropic SSE format).

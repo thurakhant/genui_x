@@ -70,15 +70,20 @@ class _TravelChatPageState extends State<TravelChatPage> {
       'CLAUDE_STREAM_FORMAT',
       defaultValue: 'anthropic',
     );
-    final streamFormat =
-        streamFormatRaw == 'openai' ? GenuiXStreamFormat.openai : GenuiXStreamFormat.anthropic;
+    final streamFormat = streamFormatRaw == 'openai'
+        ? GenuiXStreamFormat.openai
+        : GenuiXStreamFormat.anthropic;
     const endpointPathEnv = String.fromEnvironment('CLAUDE_ENDPOINT_PATH');
     final endpointPath = endpointPathEnv.isEmpty
-        ? (streamFormat == GenuiXStreamFormat.openai ? '/v1/chat/completions' : '/v1/messages')
+        ? (streamFormat == GenuiXStreamFormat.openai
+            ? '/v1/chat/completions'
+            : '/v1/messages')
         : endpointPathEnv;
     const apiKeyHeaderEnv = String.fromEnvironment('CLAUDE_API_KEY_HEADER');
     final apiKeyHeader = apiKeyHeaderEnv.isEmpty
-        ? (streamFormat == GenuiXStreamFormat.openai ? 'authorization' : 'x-api-key')
+        ? (streamFormat == GenuiXStreamFormat.openai
+            ? 'authorization'
+            : 'x-api-key')
         : apiKeyHeaderEnv;
     const apiKeyPrefixEnv = String.fromEnvironment('CLAUDE_API_KEY_PREFIX');
     final apiKeyPrefix = apiKeyPrefixEnv.isEmpty
@@ -101,7 +106,8 @@ class _TravelChatPageState extends State<TravelChatPage> {
       model: 'claude-sonnet-4-6',
     );
     _controller = SurfaceController(catalogs: [travelCatalog]);
-    _conversation = Conversation(controller: _controller, transport: _transport);
+    _conversation =
+        Conversation(controller: _controller, transport: _transport);
 
     _conversation.events.listen((event) {
       if (event is ConversationContentReceived) {
@@ -118,7 +124,8 @@ class _TravelChatPageState extends State<TravelChatPage> {
           _isWaiting = false;
           _errorText = event.error.toString();
         });
-      } else if (event is ConversationSurfaceAdded || event is ConversationComponentsUpdated) {
+      } else if (event is ConversationSurfaceAdded ||
+          event is ConversationComponentsUpdated) {
         setState(() => _isWaiting = false);
       }
     });
@@ -259,7 +266,8 @@ class TravelPlanWidget extends StatelessWidget {
           children: [
             Text(destination, style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 8),
-            Text('$days-day plan', style: Theme.of(context).textTheme.bodyLarge),
+            Text('$days-day plan',
+                style: Theme.of(context).textTheme.bodyLarge),
             const SizedBox(height: 12),
             ...highlights.map(
               (item) => Padding(
@@ -292,7 +300,9 @@ final travelCatalogItem = CatalogItem(
     return TravelPlanWidget(
       destination: data['destination'] as String,
       days: (data['days'] as num).toInt(),
-      highlights: (data['highlights'] as List<dynamic>).map((item) => item as String).toList(),
+      highlights: (data['highlights'] as List<dynamic>)
+          .map((item) => item as String)
+          .toList(),
     );
   },
 );

@@ -38,7 +38,7 @@ Your App
 # pubspec.yaml
 dependencies:
   genui: ^0.8.0
-  genui_x: ^0.0.10
+  genui_x: ^0.0.11
 ```
 
 ### 2. Create your catalog
@@ -128,9 +128,29 @@ final transport = GenuiXTransport(
 final transport = GenuiXTransport.openai(
   apiKey: 'sk-your-openai-key',
   catalog: myCatalog,
-  // model: 'gpt-4o',  // optional — default is gpt-4o-mini
+  // model: 'gpt-4o',          // optional — default is gpt-4o-mini
+  // enforceJsonMode: true,    // optional — sets response_format to json_object
 );
 ```
+
+Set `enforceJsonMode: true` to pin OpenAI's response to a JSON object, which
+improves A2UI compliance on smaller models. Has no effect on Anthropic or
+Gemini transports.
+
+### Google Gemini
+
+```dart
+final transport = GenuiXTransport.gemini(
+  apiKey: 'your-google-api-key',
+  catalog: myCatalog,
+  // model: 'gemini-2.5-pro',  // optional — default is gemini-2.5-flash
+);
+```
+
+Sends `x-goog-api-key`, posts to
+`/v1beta/models/{model}:streamGenerateContent?alt=sse`, and parses Gemini's
+`candidates[*].content.parts[*].text` SSE stream. Override `baseUrl` to
+point at a Vertex AI gateway or your own proxy.
 
 ### OpenRouter / LiteLLM / custom proxy
 
@@ -242,6 +262,8 @@ final transport = GenuiXTransport(
 | Claude | `claude-opus-4-6` | Highest quality |
 | OpenAI | `gpt-4o-mini` | Default for `.openai()` |
 | OpenAI | `gpt-4o` | Higher quality |
+| Gemini | `gemini-2.5-flash` | Default for `.gemini()` — fast, low cost |
+| Gemini | `gemini-2.5-pro` | Higher quality |
 | OpenRouter | any model slug | via `GenuiXTransport.openai(baseUrl: ...)` |
 
 ---
@@ -263,6 +285,10 @@ flutter run -t lib/proxy_main.dart \
   --dart-define=PROXY_BASE_URL=https://openrouter.ai/api \
   --dart-define=PROXY_API_KEY=sk-or-your-key \
   --dart-define=PROXY_MODEL=anthropic/claude-3.5-sonnet
+
+# Google Gemini
+flutter run -t lib/gemini_main.dart \
+  --dart-define=GEMINI_API_KEY=your-google-api-key
 ```
 
 ---

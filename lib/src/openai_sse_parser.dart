@@ -8,11 +8,9 @@ import 'dart:convert';
 class OpenAiSseParser {
   /// Transforms a raw byte stream into a stream of text delta strings.
   Stream<String> parse(Stream<List<int>> byteStream) {
-    return _parseLines(byteStream).transform(
-      StreamTransformer.fromHandlers(
-        handleData: _handleLine,
-      ),
-    );
+    return _parseLines(
+      byteStream,
+    ).transform(StreamTransformer.fromHandlers(handleData: _handleLine));
   }
 
   void _handleLine(String line, EventSink<String> sink) {
