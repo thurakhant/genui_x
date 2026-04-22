@@ -66,7 +66,7 @@ class _TravelChatPageState extends State<TravelChatPage> {
     } else if (event is ConversationContentReceived) {
       setState(() {
         _isWaiting = false;
-        final idx = _lastStreaming();
+        final idx = _lastAssistantText();
         if (idx >= 0) {
           _entries[idx] = _AssistantTextEntry(text: event.text);
         } else {
@@ -78,7 +78,7 @@ class _TravelChatPageState extends State<TravelChatPage> {
       final surfaceCount = _conversation.state.value.surfaces.length;
       setState(() {
         _isWaiting = false;
-        final placeholderIdx = _lastStreaming();
+        final placeholderIdx = _lastAssistantText();
         if (placeholderIdx >= 0) _entries.removeAt(placeholderIdx);
         _entries.add(_SurfaceEntry(surfaceCount - 1));
       });
@@ -88,7 +88,7 @@ class _TravelChatPageState extends State<TravelChatPage> {
     } else if (event is ConversationError) {
       setState(() {
         _isWaiting = false;
-        final idx = _lastStreaming();
+        final idx = _lastAssistantText();
         if (idx >= 0) _entries.removeAt(idx);
         _entries.add(
           _AssistantTextEntry(
@@ -99,10 +99,9 @@ class _TravelChatPageState extends State<TravelChatPage> {
     }
   }
 
-  int _lastStreaming() {
+  int _lastAssistantText() {
     for (var i = _entries.length - 1; i >= 0; i--) {
-      final e = _entries[i];
-      if (e is _AssistantTextEntry && e.isStreaming) return i;
+      if (_entries[i] is _AssistantTextEntry) return i;
     }
     return -1;
   }
