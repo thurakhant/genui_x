@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:genui_x_example/src/widgets/trip_overview_card.dart';
 import 'package:genui_x_example/src/widgets/day_card.dart';
+import 'package:genui_x_example/src/widgets/place_card.dart';
 
 void main() {
   group('TripOverviewCard', () {
@@ -43,6 +44,58 @@ void main() {
       expect(find.text('1'), findsOneWidget);
       expect(find.text('Arrival & Shinjuku'), findsOneWidget);
       expect(find.text('Check into hotel'), findsOneWidget);
+    });
+  });
+
+  group('PlaceCard', () {
+    testWidgets('renders name and category', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: PlaceCard(
+              name: 'Senso-ji Temple',
+              category: 'Temple',
+              description: 'Tokyo\'s oldest temple in Asakusa.',
+              emoji: '⛩️',
+            ),
+          ),
+        ),
+      );
+      expect(find.text('Senso-ji Temple'), findsOneWidget);
+      expect(find.text('Temple'), findsOneWidget);
+    });
+
+    testWidgets('renders optional tip when provided', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: PlaceCard(
+              name: 'Senso-ji Temple',
+              category: 'Temple',
+              description: 'Old temple.',
+              emoji: '⛩️',
+              tip: 'Arrive early to avoid crowds',
+            ),
+          ),
+        ),
+      );
+      expect(find.textContaining('Arrive early'), findsOneWidget);
+    });
+
+    testWidgets('does not render tip section when tip is null', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: PlaceCard(
+              name: 'Senso-ji Temple',
+              category: 'Temple',
+              description: 'Old temple.',
+              emoji: '⛩️',
+            ),
+          ),
+        ),
+      );
+      expect(find.textContaining('💡'), findsNothing);
     });
   });
 }
