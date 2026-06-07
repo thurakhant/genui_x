@@ -1,3 +1,20 @@
+## 0.0.13
+
+* Upgrade dependency to `genui: ^0.9.2` in both the package and example app.
+* Upgrade transport dependency to `http: ^1.6.0`.
+* Improve SSE parser compatibility for OpenAI-compatible proxies by accepting
+  both `data: {...}` and `data:{...}` line formats.
+* Harden transport error handling by skipping empty outbound messages and
+  surfacing API errors as user-safe text chunks.
+* Harden travel example rendering against model output variance:
+  register both `travel-catalog` and legacy `travel` IDs, accept flat or
+  nested (`data`) props, and add safe fallbacks for missing fields.
+* Smooth travel example waiting UX by keeping progress visible until a real
+  UI/text result is rendered.
+* Add troubleshooting notes in README for 200-with-delayed-UI behavior,
+  proxy SSE formatting differences, catalog ID mismatches, and prop shape
+  compatibility.
+
 ## 0.0.12
 
 * Add `GenuiXTransport.ollama()` factory — thin wrapper around
@@ -17,20 +34,6 @@
   `topics` to `[genui, llm, claude, gemini, openai]` (drop redundant
   `flutter` and broad `ai`), and stage a commented-out `screenshots:`
   block for the demo GIF.
-* Upgrade dependency to `genui: ^0.9.2` in both the package and example app.
-* Upgrade transport dependency to `http: ^1.6.0`.
-* Refresh docs and agent notes to reference `genui ^0.9.2` instead of `^0.8.0`.
-* Exclude dev-only docs (`doc/superpowers/`, `docs/`) from pub publish via
-  `.pubignore` so package publish surface stays clean.
-* Improve SSE parser compatibility for OpenAI-compatible proxies by accepting
-  both `data: {...}` and `data:{...}` line formats.
-* Harden travel example rendering against model output variance:
-  register both `travel-catalog` and legacy `travel` IDs, accept flat or
-  nested (`data`) props, and add safe fallbacks for missing fields.
-* Smooth example waiting UX by keeping progress visible until a real UI/text
-  result is rendered.
-* Validate compatibility with `flutter analyze --fatal-infos` and `flutter test`
-  in both the root package and `example/` app.
 * No public API removals or signature changes; existing call sites for
   `.anthropic()`, `.openai()`, and `.gemini()` are byte-identical.
 
