@@ -56,6 +56,7 @@ pubspec.lock
 
 # Superpowers brainstorm sessions
 .superpowers/
+doc/superpowers/
 
 # Agent/tooling configs
 .claude/
