@@ -11,7 +11,7 @@ Internal implementation of the `genui_x` package. Contains the HTTP transport la
 | File | Description |
 |------|-------------|
 | `genui_x_config.dart` | Immutable `GenuiXConfig` value object — holds API key, model, base URL, endpoint path, token limit, auth header names, stream format, retry policy, JSON-mode toggle, surface operations, and client data model |
-| `genui_x_transport.dart` | Main `Transport` implementation (`GenuiXTransport`). Manages conversation history, builds the system prompt via `PromptBuilder`, builds provider-specific request URI/payload via `_buildUri()` / `_buildPayload()`, streams chunks from the configured backend, and pipes them to `A2uiTransportAdapter`. Exposes `.openai()`, `.anthropic()`, and `.gemini()` factory constructors |
+| `genui_x_transport.dart` | Main `Transport` implementation (`GenuiXTransport`). Manages conversation history, builds the system prompt via `PromptBuilder`, builds provider-specific request URI/payload via `_buildUri()` / `_buildPayload()`, streams chunks from the configured backend, and pipes them to `A2uiTransportAdapter`. Exposes `.openai()`, `.anthropic()`, `.gemini()`, and `.ollama()` factory constructors (the last is a thin wrapper around `.openai()` for local Ollama servers) |
 | `anthropic_sse_parser.dart` | `AnthropicSseParser` — parses Anthropic Messages API SSE stream (`content_block_delta` / `text_delta` events) |
 | `openai_sse_parser.dart` | `OpenAiSseParser` — parses OpenAI chat-completions SSE stream (`choices[0].delta.content`) |
 | `gemini_sse_parser.dart` | `GeminiSseParser` — parses Gemini `streamGenerateContent?alt=sse` stream (`candidates[*].content.parts[*].text`) |
@@ -35,7 +35,7 @@ Internal implementation of the `genui_x` package. Contains the HTTP transport la
 2. Add a variant to `GenuiXStreamFormat` in `genui_x_config.dart`.
 3. Add a parser field on `GenuiXTransport` and wire it into the `switch` in `_streamLlm()`.
 4. Add a vendor branch to `_buildUri()` (if the URI shape differs) and `_buildPayload()` (if the body shape differs).
-5. Optionally add a `GenuiXTransport.<vendor>()` factory mirroring `.openai()` / `.anthropic()` / `.gemini()`.
+5. Optionally add a `GenuiXTransport.<vendor>()` factory mirroring `.openai()` / `.anthropic()` / `.gemini()` / `.ollama()`.
 6. Export nothing (parsers are internal).
 
 ### Testing Requirements

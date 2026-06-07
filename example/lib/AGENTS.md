@@ -4,7 +4,7 @@
 # example/lib/
 
 ## Purpose
-Four Flutter entry points demonstrating different complexity levels and backend choices for `genui_x` integration. Each file is a complete runnable app including its own `Catalog`, `CatalogItem`, `widgetBuilder`, and chat UI.
+Five Flutter entry points demonstrating different complexity levels and backend choices for `genui_x` integration. Each file is a complete runnable app including its own `Catalog`, `CatalogItem`, `widgetBuilder`, and chat UI.
 
 ## Key Files
 
@@ -14,6 +14,8 @@ Four Flutter entry points demonstrating different complexity levels and backend 
 | `main.dart` | Full-featured demo — `WeatherWidget` catalog with proxy/model overrides via `--dart-define`, text input chat |
 | `travel_main.dart` | Travel demo — custom `TravelPlanWidget` catalog, shows `data`-wrapped component properties and list props |
 | `gemini_main.dart` | Gemini-backend demo — uses `GenuiXTransport.gemini()` against the Generative Language API |
+| `ollama_main.dart` | Local Ollama demo — uses `GenuiXTransport.ollama()`, no API key required, `enforceJsonMode: true` |
+| `proxy_main.dart` | Generic OpenAI-compatible proxy demo (LiteLLM, OpenRouter, etc.) configured via `--dart-define` |
 
 ## For AI Agents
 
@@ -60,7 +62,7 @@ cd example && flutter test      # widget smoke tests
 - `../AGENTS.md` — example-wide conventions
 
 ### External
-- `package:genui_x` — `GenuiXTransport` (with `.openai()`, `.anthropic()`, `.gemini()` factories), `GenuiXConfig`, `GenuiXStreamFormat`
+- `package:genui_x` — `GenuiXTransport` (with `.openai()`, `.anthropic()`, `.gemini()`, `.ollama()` factories), `GenuiXConfig`, `GenuiXStreamFormat`
 - `package:genui` — `Catalog`, `CatalogItem`, `SurfaceController`, `Conversation`, `Surface`, `ChatMessage`, `PromptBuilder`
 - `package:json_schema_builder` — `S.object()`, `S.string()`, etc.
 
