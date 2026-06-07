@@ -32,6 +32,15 @@ void main() {
       expect(chunks, ['Hello']);
     });
 
+    test('accepts SSE lines without a space after data:', () async {
+      const sse =
+          'event: content_block_delta\n'
+          'data:{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}\n\n';
+
+      final chunks = await parser.parse(_toByteStream(sse)).toList();
+      expect(chunks, ['Hello']);
+    });
+
     test('handles multiple text_delta events', () async {
       const sse =
           'event: content_block_delta\n'

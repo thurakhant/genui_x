@@ -1,10 +1,10 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-04-06 | Updated: 2026-04-19 -->
+<!-- Generated: 2026-04-06 | Updated: 2026-04-19 (0.0.12) -->
 
 # example/
 
 ## Purpose
-Standalone Flutter app demonstrating four usage patterns of `genui_x` (minimal Anthropic, full-featured Anthropic with proxy/model overrides, custom catalog with travel widgets, and Gemini backend). Each entry point is a self-contained demo that can be launched independently with `flutter run -t lib/<entry>.dart`. The example app uses a separate `pubspec.yaml` and is not part of the published package.
+Standalone Flutter app demonstrating six usage patterns of `genui_x`: minimal Anthropic, full-featured Anthropic with proxy/model overrides, custom catalog with travel widgets, Google Gemini backend, local Ollama server, and a generic OpenAI-compatible proxy. Each entry point is a self-contained demo that can be launched independently with `flutter run -t lib/<entry>.dart`. The example app uses a separate `pubspec.yaml` and is not part of the published package.
 
 ## Subdirectories
 
@@ -24,6 +24,8 @@ Standalone Flutter app demonstrating four usage patterns of `genui_x` (minimal A
   flutter run -t lib/minimal_main.dart --dart-define=CLAUDE_API_KEY=sk-ant-...
   flutter run -t lib/travel_main.dart --dart-define=CLAUDE_API_KEY=sk-ant-...
   flutter run -t lib/gemini_main.dart --dart-define=GEMINI_API_KEY=...
+  flutter run -t lib/ollama_main.dart          # no API key required
+  flutter run -t lib/proxy_main.dart --dart-define=CLAUDE_API_KEY=your-key
   ```
 - To use a proxy with the Anthropic-shaped demos: add `--dart-define=CLAUDE_BASE_URL=https://...` and optionally `CLAUDE_STREAM_FORMAT=openai`, `CLAUDE_ENDPOINT_PATH`, `CLAUDE_API_KEY_HEADER`, `CLAUDE_API_KEY_PREFIX`.
 - The `ios/` directory is auto-generated — never edit files there directly.
@@ -43,7 +45,7 @@ cd example && flutter test
 - `package:genui_x` (path dependency on `../`)
 
 ### External
-- `genui` ^0.8.0
+- `genui` ^0.9.2
 - `json_schema_builder` (transitive via genui)
 
 <!-- MANUAL: -->

@@ -54,6 +54,9 @@ pubspec.lock
 # Flutter SDK/version managers
 .fvm/
 
+# Superpowers brainstorm sessions
+.superpowers/
+
 # Agent/tooling configs
 .claude/
 .opencode/

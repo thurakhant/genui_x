@@ -242,30 +242,6 @@ class GenuiXTransport implements Transport {
     );
   }
 
-  /// Creates a [GenuiXTransport] pre-configured for Google Gemini.
-  ///
-  /// Sets the correct `x-goog-api-key` header, the
-  /// `/v1beta/models/{model}:streamGenerateContent` endpoint with `?alt=sse`,
-  /// and the Gemini SSE stream format automatically.
-  ///
-  /// Works with `gemini-2.5-flash`, `gemini-2.5-pro`, and any Vertex AI or
-  /// proxy endpoint that mirrors the Generative Language API surface.
-  ///
-  /// ```dart
-  /// final transport = GenuiXTransport.gemini(
-  ///   apiKey: 'your-google-api-key',
-  ///   catalog: myCatalog,
-  /// );
-  /// ```
-  ///
-  /// Override [model] for a different Gemini variant:
-  /// ```dart
-  /// GenuiXTransport.gemini(
-  ///   apiKey: 'your-key',
-  ///   catalog: myCatalog,
-  ///   model: 'gemini-2.5-pro',
-  /// );
-  /// ```
   /// Creates a [GenuiXTransport] pre-configured for a local Ollama server.
   ///
   /// Ollama exposes an OpenAI-compatible Chat Completions endpoint at
@@ -321,6 +297,30 @@ class GenuiXTransport implements Transport {
     );
   }
 
+  /// Creates a [GenuiXTransport] pre-configured for Google Gemini.
+  ///
+  /// Sets the correct `x-goog-api-key` header, the
+  /// `/v1beta/models/{model}:streamGenerateContent` endpoint with `?alt=sse`,
+  /// and the Gemini SSE stream format automatically.
+  ///
+  /// Works with `gemini-2.5-flash`, `gemini-2.5-pro`, and any Vertex AI or
+  /// proxy endpoint that mirrors the Generative Language API surface.
+  ///
+  /// ```dart
+  /// final transport = GenuiXTransport.gemini(
+  ///   apiKey: 'your-google-api-key',
+  ///   catalog: myCatalog,
+  /// );
+  /// ```
+  ///
+  /// Override [model] for a different Gemini variant:
+  /// ```dart
+  /// GenuiXTransport.gemini(
+  ///   apiKey: 'your-key',
+  ///   catalog: myCatalog,
+  ///   model: 'gemini-2.5-pro',
+  /// );
+  /// ```
   factory GenuiXTransport.gemini({
     required String apiKey,
     required Catalog catalog,
@@ -431,7 +431,13 @@ class GenuiXTransport implements Transport {
   /// as a text chunk rather than thrown, so the conversation continues.
   @override
   Future<void> sendRequest(ChatMessage message) async {
-    _history.add(_toMessage(message));
+    final outbound = _toMessage(message);
+    final content = outbound['content'] as String;
+    if (content.isEmpty) {
+      return;
+    }
+
+    _history.add(outbound);
     isLoading.value = true;
 
     try {
@@ -481,7 +487,10 @@ class GenuiXTransport implements Transport {
         if (e is GenuiXAuthError || e is GenuiXRateLimitError) {
           completer.completeError(e, st);
         } else if (e is GenuiXApiError) {
-          _adapter.addChunk('\n\nSorry, I encountered an error: ${e.message}');
+          final status = e.statusCode > 0 ? ' (HTTP ${e.statusCode})' : '';
+          _adapter.addChunk(
+            '\n\nSorry, I encountered an API error$status. Please try again.',
+          );
           completer.complete();
         } else {
           _adapter.addChunk('\n\nSorry, I encountered an unexpected error.');
@@ -625,7 +634,7 @@ class GenuiXTransport implements Transport {
   /// [_toGeminiContent] at request time.
   Map<String, dynamic> _toMessage(ChatMessage message) {
     final role = message.role == ChatMessageRole.model ? 'assistant' : 'user';
-    return {'role': role, 'content': message.text};
+    return {'role': role, 'content': message.text.trim()};
   }
 
   /// Converts a stored history entry (`{role, content}`) into Gemini's

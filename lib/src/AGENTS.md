@@ -55,7 +55,7 @@ Internal implementation of the `genui_x` package. Contains the HTTP transport la
 - `anthropic_sse_parser.dart`, `openai_sse_parser.dart`, and `gemini_sse_parser.dart` ← used by `genui_x_transport.dart`
 
 ### External
-- `genui` (^0.8.0) — `Transport`, `A2uiTransportAdapter`, `PromptBuilder`, `Catalog`, `ChatMessage`, `SurfaceOperations`
-- `http` (^1.2.0) — `http.Client`, `http.Request`, `http.StreamedResponse`
+- `genui` (^0.9.2) — `Transport`, `A2uiTransportAdapter`, `PromptBuilder`, `Catalog`, `ChatMessage`, `SurfaceOperations`
+- `http` (^1.6.0) — `http.Client`, `http.Request`, `http.StreamedResponse`
 
 <!-- MANUAL: -->

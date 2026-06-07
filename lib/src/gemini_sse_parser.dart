@@ -24,9 +24,9 @@ class GeminiSseParser {
   }
 
   void _handleLine(String line, EventSink<String> sink) {
-    if (!line.startsWith('data: ')) return;
+    if (!line.startsWith('data:')) return;
 
-    final data = line.substring(6).trim();
+    final data = line.substring(5).trim();
     if (data.isEmpty || data == '[DONE]') return;
 
     try {

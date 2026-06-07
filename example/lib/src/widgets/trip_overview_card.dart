@@ -45,7 +45,9 @@ class TripOverviewCard extends StatelessWidget {
             Text(
               tagline,
               style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.colorScheme.onPrimaryContainer.withOpacity(0.8),
+                color: theme.colorScheme.onPrimaryContainer.withValues(
+                  alpha: 0.8,
+                ),
               ),
             ),
             const SizedBox(height: 14),
@@ -78,7 +80,7 @@ class _InfoChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: theme.colorScheme.onPrimaryContainer.withOpacity(0.12),
+        color: theme.colorScheme.onPrimaryContainer.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(

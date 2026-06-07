@@ -22,6 +22,13 @@
 * Refresh docs and agent notes to reference `genui ^0.9.2` instead of `^0.8.0`.
 * Exclude dev-only docs (`doc/superpowers/`, `docs/`) from pub publish via
   `.pubignore` so package publish surface stays clean.
+* Improve SSE parser compatibility for OpenAI-compatible proxies by accepting
+  both `data: {...}` and `data:{...}` line formats.
+* Harden travel example rendering against model output variance:
+  register both `travel-catalog` and legacy `travel` IDs, accept flat or
+  nested (`data`) props, and add safe fallbacks for missing fields.
+* Smooth example waiting UX by keeping progress visible until a real UI/text
+  result is rendered.
 * Validate compatibility with `flutter analyze --fatal-infos` and `flutter test`
   in both the root package and `example/` app.
 * No public API removals or signature changes; existing call sites for
