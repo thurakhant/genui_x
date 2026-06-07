@@ -17,6 +17,13 @@
   `topics` to `[genui, llm, claude, gemini, openai]` (drop redundant
   `flutter` and broad `ai`), and stage a commented-out `screenshots:`
   block for the demo GIF.
+* Upgrade dependency to `genui: ^0.9.2` in both the package and example app.
+* Upgrade transport dependency to `http: ^1.6.0`.
+* Refresh docs and agent notes to reference `genui ^0.9.2` instead of `^0.8.0`.
+* Exclude dev-only docs (`doc/superpowers/`, `docs/`) from pub publish via
+  `.pubignore` so package publish surface stays clean.
+* Validate compatibility with `flutter analyze --fatal-infos` and `flutter test`
+  in both the root package and `example/` app.
 * No public API removals or signature changes; existing call sites for
   `.anthropic()`, `.openai()`, and `.gemini()` are byte-identical.
 

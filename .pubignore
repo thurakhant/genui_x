@@ -20,6 +20,8 @@ AGENTS.md
 
 # Dev-only docs
 doc/RELEASE_CHECKLIST.md
+doc/superpowers/
+docs/
 
 # Environment and secrets
 .env

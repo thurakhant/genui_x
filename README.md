@@ -65,7 +65,7 @@ Your App
 ```yaml
 # pubspec.yaml
 dependencies:
-  genui: ^0.8.0
+  genui: ^0.9.2
   genui_x: ^0.0.12
 ```
 
