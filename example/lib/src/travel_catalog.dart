@@ -110,13 +110,11 @@ final _dayCardItem = CatalogItem(
 final _placeCardItem = CatalogItem(
   name: 'PlaceCard',
   dataSchema: S.object(
-    description:
-        'Highlights a specific attraction, restaurant, or experience.',
+    description: 'Highlights a specific attraction, restaurant, or experience.',
     properties: {
       'name': S.string(description: 'Place name.'),
       'category': S.string(
-        description:
-            'Category label, e.g. "Temple", "Restaurant", "Market".',
+        description: 'Category label, e.g. "Temple", "Restaurant", "Market".',
       ),
       'description': S.string(description: 'One or two sentence description.'),
       'emoji': S.string(description: 'Relevant emoji for the place type.'),

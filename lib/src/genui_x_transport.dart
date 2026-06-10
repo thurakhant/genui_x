@@ -82,6 +82,8 @@ class GenuiXTransport implements Transport {
   /// ### Debugging
   /// - [debug] — when `true`, prints request URL, status code, and errors
   ///   via [debugPrint]. Useful for diagnosing proxy configuration issues.
+  /// - [debugVerbose] — when `true`, prints parser selection, raw SSE lines,
+  ///   and emitted chunk previews. Only applies when [debug] is also `true`.
   /// - [httpClient] — override the HTTP client (useful for testing).
   GenuiXTransport({
     required String apiKey,
@@ -98,6 +100,7 @@ class GenuiXTransport implements Transport {
     Map<String, Object?> requestBodyOverrides = const <String, Object?>{},
     List<String> systemPromptFragments = const <String>[],
     bool debug = false,
+    bool debugVerbose = false,
     SurfaceOperations? surfaceOperations,
     Map<String, Object?>? clientDataModel,
     int maxRetries = 3,
@@ -115,6 +118,7 @@ class GenuiXTransport implements Transport {
          requestBodyOverrides: requestBodyOverrides,
          systemPromptFragments: systemPromptFragments,
          debug: debug,
+         debugVerbose: debugVerbose,
          surfaceOperations: surfaceOperations,
          clientDataModel: clientDataModel,
          maxRetries: maxRetries,
@@ -158,6 +162,7 @@ class GenuiXTransport implements Transport {
     Map<String, Object?> requestBodyOverrides = const <String, Object?>{},
     List<String> systemPromptFragments = const <String>[],
     bool debug = false,
+    bool debugVerbose = false,
     SurfaceOperations? surfaceOperations,
     Map<String, Object?>? clientDataModel,
     int maxRetries = 3,
@@ -178,6 +183,7 @@ class GenuiXTransport implements Transport {
       requestBodyOverrides: requestBodyOverrides,
       systemPromptFragments: systemPromptFragments,
       debug: debug,
+      debugVerbose: debugVerbose,
       surfaceOperations: surfaceOperations,
       clientDataModel: clientDataModel,
       maxRetries: maxRetries,
@@ -217,6 +223,7 @@ class GenuiXTransport implements Transport {
     Map<String, Object?> requestBodyOverrides = const <String, Object?>{},
     List<String> systemPromptFragments = const <String>[],
     bool debug = false,
+    bool debugVerbose = false,
     SurfaceOperations? surfaceOperations,
     Map<String, Object?>? clientDataModel,
     int maxRetries = 3,
@@ -236,6 +243,7 @@ class GenuiXTransport implements Transport {
       requestBodyOverrides: requestBodyOverrides,
       systemPromptFragments: systemPromptFragments,
       debug: debug,
+      debugVerbose: debugVerbose,
       surfaceOperations: surfaceOperations,
       clientDataModel: clientDataModel,
       maxRetries: maxRetries,
@@ -274,6 +282,7 @@ class GenuiXTransport implements Transport {
     Map<String, Object?> requestBodyOverrides = const <String, Object?>{},
     List<String> systemPromptFragments = const <String>[],
     bool debug = false,
+    bool debugVerbose = false,
     SurfaceOperations? surfaceOperations,
     Map<String, Object?>? clientDataModel,
     int maxRetries = 0,
@@ -290,6 +299,7 @@ class GenuiXTransport implements Transport {
       requestBodyOverrides: requestBodyOverrides,
       systemPromptFragments: systemPromptFragments,
       debug: debug,
+      debugVerbose: debugVerbose,
       surfaceOperations: surfaceOperations,
       clientDataModel: clientDataModel,
       maxRetries: maxRetries,
@@ -332,6 +342,7 @@ class GenuiXTransport implements Transport {
     Map<String, Object?> requestBodyOverrides = const <String, Object?>{},
     List<String> systemPromptFragments = const <String>[],
     bool debug = false,
+    bool debugVerbose = false,
     SurfaceOperations? surfaceOperations,
     Map<String, Object?>? clientDataModel,
     int maxRetries = 3,
@@ -353,6 +364,7 @@ class GenuiXTransport implements Transport {
       requestBodyOverrides: requestBodyOverrides,
       systemPromptFragments: systemPromptFragments,
       debug: debug,
+      debugVerbose: debugVerbose,
       surfaceOperations: surfaceOperations,
       clientDataModel: clientDataModel,
       maxRetries: maxRetries,
@@ -563,14 +575,67 @@ class GenuiXTransport implements Transport {
       throw GenuiXApiError(response.statusCode, body);
     }
 
+    _debugVerbose('parser=${_config.streamFormat.name}');
+    final byteStream = (_config.debug && _config.debugVerbose)
+        ? _tapRawSseLines(response.stream)
+        : response.stream;
+
     switch (_config.streamFormat) {
       case GenuiXStreamFormat.openai:
-        yield* _openaiSseParser.parse(response.stream);
+        yield* _logParsedChunks(_openaiSseParser.parse(byteStream));
       case GenuiXStreamFormat.gemini:
-        yield* _geminiSseParser.parse(response.stream);
+        yield* _logParsedChunks(_geminiSseParser.parse(byteStream));
       case GenuiXStreamFormat.anthropic:
-        yield* _anthropicSseParser.parse(response.stream);
+        yield* _logParsedChunks(_anthropicSseParser.parse(byteStream));
     }
+  }
+
+  Stream<List<int>> _tapRawSseLines(Stream<List<int>> source) async* {
+    var pending = '';
+    await for (final bytes in source) {
+      final chunk = utf8.decode(bytes, allowMalformed: true);
+      final combined = pending + chunk;
+      final lines = combined.split('\n');
+      pending = lines.removeLast();
+
+      for (final line in lines) {
+        final trimmed = line.trimRight();
+        if (trimmed.isEmpty) {
+          continue;
+        }
+        if (trimmed.startsWith('data:')) {
+          _debugVerbose('sse ${_truncate(trimmed)}');
+        }
+      }
+
+      yield bytes;
+    }
+
+    if (pending.trim().startsWith('data:')) {
+      _debugVerbose('sse ${_truncate(pending.trim())}');
+    }
+  }
+
+  Stream<String> _logParsedChunks(Stream<String> source) async* {
+    await for (final chunk in source) {
+      _debugVerbose('chunk len=${chunk.length} preview=${_truncate(chunk)}');
+      yield chunk;
+    }
+  }
+
+  void _debugVerbose(String message) {
+    if (!_config.debug || !_config.debugVerbose) {
+      return;
+    }
+    debugPrint('[genui_x][verbose] $message');
+  }
+
+  String _truncate(String value, {int max = 220}) {
+    final normalized = value.replaceAll('\n', r'\n').replaceAll('\r', r'\r');
+    if (normalized.length <= max) {
+      return normalized;
+    }
+    return '${normalized.substring(0, max)}…';
   }
 
   /// Builds the request URI for the active stream format.

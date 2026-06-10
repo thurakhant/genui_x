@@ -1,3 +1,10 @@
+## Unreleased
+
+* Add `debugVerbose` to `GenuiXConfig` and all `GenuiXTransport` constructors
+  and factories. When combined with `debug: true`, it logs parser selection,
+  raw SSE `data:` lines, and safe-truncated chunk previews to help diagnose
+  proxy stream issues.
+
 ## 0.0.13
 
 * Upgrade dependency to `genui: ^0.9.2` in both the package and example app.

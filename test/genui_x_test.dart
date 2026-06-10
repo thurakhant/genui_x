@@ -1,3 +1,6 @@
+// Copyright 2025 genui_x contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:genui_x/genui_x.dart';
 
@@ -16,6 +19,7 @@ void main() {
       expect(config.headers, isEmpty);
       expect(config.streamFormat, GenuiXStreamFormat.anthropic);
       expect(config.enforceJsonMode, isFalse);
+      expect(config.debugVerbose, isFalse);
     });
 
     test('GenuiXStreamFormat exposes a gemini variant', () {
@@ -25,6 +29,11 @@ void main() {
     test('enforceJsonMode can be set', () {
       const config = GenuiXConfig(apiKey: 'test-key', enforceJsonMode: true);
       expect(config.enforceJsonMode, isTrue);
+    });
+
+    test('debugVerbose can be set', () {
+      const config = GenuiXConfig(apiKey: 'test-key', debugVerbose: true);
+      expect(config.debugVerbose, isTrue);
     });
 
     test('accepts custom model and baseUrl', () {

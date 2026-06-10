@@ -231,8 +231,7 @@ class _TravelChatPageState extends State<TravelChatPage> {
       ),
       body: Column(
         children: [
-          if (_isWaiting)
-            const LinearProgressIndicator(minHeight: 2),
+          if (_isWaiting) const LinearProgressIndicator(minHeight: 2),
           Expanded(
             child: _entries.isEmpty
                 ? const _EmptyState()
@@ -260,8 +259,9 @@ class _TravelChatPageState extends State<TravelChatPage> {
   Widget _buildEntry(_ChatEntry entry, List<dynamic> surfaces) {
     return switch (entry) {
       _UserEntry e => _UserBubble(text: e.text),
-      _AssistantTextEntry e =>
-        e.isStreaming ? const _TypingIndicator() : _AssistantBubble(text: e.text),
+      _AssistantTextEntry e => e.isStreaming
+          ? const _TypingIndicator()
+          : _AssistantBubble(text: e.text),
       _SurfaceEntry e when e.surfaceIndex < surfaces.length => Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Surface(
