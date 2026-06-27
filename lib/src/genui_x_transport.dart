@@ -666,11 +666,18 @@ class GenuiXTransport implements Transport {
         payload.addAll(_config.requestBodyOverrides);
         return payload;
       case GenuiXStreamFormat.openai:
+        // OpenAI's Chat Completions API has no top-level `system` parameter —
+        // the system prompt must be the first entry in `messages` with role
+        // `system`, otherwise the model never receives the A2UI catalog
+        // instructions. (Anthropic, by contrast, does take a top-level
+        // `system`, which is why that case below keeps it.)
         final payload = <String, Object?>{
           'model': _config.model,
           'max_tokens': _config.maxTokens,
-          'system': _systemPrompt,
-          'messages': _history,
+          'messages': [
+            {'role': 'system', 'content': _systemPrompt},
+            ..._history,
+          ],
           'stream': true,
         };
         if (_config.enforceJsonMode &&
