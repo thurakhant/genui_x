@@ -34,7 +34,7 @@ final transport = GenuiXTransport.anthropic(  // or .openai() / .gemini() / .oll
 | Ollama (local) | `GenuiXTransport.ollama()` | ✅ | ✅ via `enforceJsonMode` | `Authorization: Bearer` (placeholder) | `llama3.2` |
 | Custom proxy | `GenuiXTransport(...)` | ✅ | via `requestBodyOverrides` | configurable | configurable |
 
-All providers share the same retry-on-429, cancel, `clearHistory`, `isLoading`, and `debug` controls.
+All providers share the same retry-on-429, cancel, `clearHistory`, `isLoading`, `debug`, and `debugVerbose` controls.
 
 ---
 
@@ -292,6 +292,7 @@ final transport = GenuiXTransport(
   apiKey: 'your-key',
   catalog: myCatalog,
   debug: true, // prints request URL, status code, and errors to console
+  // debugVerbose: true, // optional — logs raw SSE frames and parser chunk previews
 );
 ```
 

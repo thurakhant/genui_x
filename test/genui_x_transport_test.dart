@@ -880,6 +880,36 @@ void main() {
       );
       t.dispose();
     });
+
+    test('debugVerbose: true with debug: false does not throw', () async {
+      final t = GenuiXTransport(
+        apiKey: 'test-key',
+        catalog: _catalog,
+        debug: false,
+        debugVerbose: true,
+        httpClient: _MockHttpClient((_) async => _response(401, 'stop')),
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      t.dispose();
+    });
+
+    test('debugVerbose: true with debug: true does not throw', () async {
+      final t = GenuiXTransport.openai(
+        apiKey: 'sk-test',
+        catalog: _catalog,
+        debug: true,
+        debugVerbose: true,
+        httpClient: _MockHttpClient((_) async => _response(401, 'stop')),
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      t.dispose();
+    });
   });
 
   group('GenuiXTransport — API error chunk safety', () {
@@ -894,10 +924,7 @@ void main() {
       );
 
       final streamErrors = <Object>[];
-      final textSub = t.incomingText.listen(
-        (_) {},
-        onError: streamErrors.add,
-      );
+      final textSub = t.incomingText.listen((_) {}, onError: streamErrors.add);
       final messageSub = t.incomingMessages.listen(
         (_) {},
         onError: streamErrors.add,

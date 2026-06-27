@@ -13,6 +13,63 @@ import 'gemini_sse_parser.dart';
 import 'genui_x_config.dart';
 import 'openai_sse_parser.dart';
 
+/// The wire-format identity of a backend: the HTTP routing details that
+/// distinguish one provider's contract from another.
+///
+/// These are exactly the values that were previously hand-copied into each
+/// provider factory. Centralising them here keeps a provider's routing in one
+/// place, so a new backend can't be wired up with the wrong auth header or
+/// endpoint — and the body shape for each is locked by
+/// `test/provider_conformance_test.dart`.
+///
+/// Behavioural knobs (retries, debug, prompt fragments, token limits) are
+/// caller-supplied and shared across providers, so they are deliberately not
+/// part of a profile.
+class _ProviderProfile {
+  const _ProviderProfile({
+    required this.endpointPath,
+    required this.apiKeyHeader,
+    required this.apiKeyPrefix,
+    required this.streamFormat,
+  });
+
+  /// Path appended to the base URL. May contain a `{model}` placeholder that
+  /// [GenuiXTransport._buildUri] substitutes at request time (Gemini).
+  final String endpointPath;
+
+  /// Header name carrying the API key (e.g. `x-api-key`, `authorization`).
+  final String apiKeyHeader;
+
+  /// Prefix prepended to the key value (e.g. `Bearer ` for Authorization).
+  final String apiKeyPrefix;
+
+  /// SSE format the response stream is parsed as.
+  final GenuiXStreamFormat streamFormat;
+}
+
+const _anthropicProfile = _ProviderProfile(
+  endpointPath: '/v1/messages',
+  apiKeyHeader: 'x-api-key',
+  apiKeyPrefix: '',
+  streamFormat: GenuiXStreamFormat.anthropic,
+);
+
+const _openaiProfile = _ProviderProfile(
+  endpointPath: '/v1/chat/completions',
+  apiKeyHeader: 'authorization',
+  apiKeyPrefix: 'Bearer ',
+  streamFormat: GenuiXStreamFormat.openai,
+);
+
+const _geminiProfile = _ProviderProfile(
+  // The {model} placeholder is substituted at request time; Gemini embeds the
+  // model in the URL path.
+  endpointPath: '/v1beta/models/{model}:streamGenerateContent?alt=sse',
+  apiKeyHeader: 'x-goog-api-key',
+  apiKeyPrefix: '',
+  streamFormat: GenuiXStreamFormat.gemini,
+);
+
 /// A [Transport] implementation that connects any AI backend to genui.
 ///
 /// Works with Anthropic Claude, OpenAI-compatible APIs, and any custom proxy.
@@ -82,6 +139,8 @@ class GenuiXTransport implements Transport {
   /// ### Debugging
   /// - [debug] — when `true`, prints request URL, status code, and errors
   ///   via [debugPrint]. Useful for diagnosing proxy configuration issues.
+  /// - [debugVerbose] — when `true`, prints parser selection, raw SSE lines,
+  ///   and emitted chunk previews. Only applies when [debug] is also `true`.
   /// - [httpClient] — override the HTTP client (useful for testing).
   GenuiXTransport({
     required String apiKey,
@@ -98,6 +157,7 @@ class GenuiXTransport implements Transport {
     Map<String, Object?> requestBodyOverrides = const <String, Object?>{},
     List<String> systemPromptFragments = const <String>[],
     bool debug = false,
+    bool debugVerbose = false,
     SurfaceOperations? surfaceOperations,
     Map<String, Object?>? clientDataModel,
     int maxRetries = 3,
@@ -115,6 +175,7 @@ class GenuiXTransport implements Transport {
          requestBodyOverrides: requestBodyOverrides,
          systemPromptFragments: systemPromptFragments,
          debug: debug,
+         debugVerbose: debugVerbose,
          surfaceOperations: surfaceOperations,
          clientDataModel: clientDataModel,
          maxRetries: maxRetries,
@@ -158,6 +219,7 @@ class GenuiXTransport implements Transport {
     Map<String, Object?> requestBodyOverrides = const <String, Object?>{},
     List<String> systemPromptFragments = const <String>[],
     bool debug = false,
+    bool debugVerbose = false,
     SurfaceOperations? surfaceOperations,
     Map<String, Object?>? clientDataModel,
     int maxRetries = 3,
@@ -168,16 +230,17 @@ class GenuiXTransport implements Transport {
       catalog: catalog,
       model: model,
       baseUrl: baseUrl,
-      endpointPath: '/v1/chat/completions',
+      endpointPath: _openaiProfile.endpointPath,
       maxTokens: maxTokens,
       httpClient: httpClient,
-      apiKeyHeader: 'authorization',
-      apiKeyPrefix: 'Bearer ',
+      apiKeyHeader: _openaiProfile.apiKeyHeader,
+      apiKeyPrefix: _openaiProfile.apiKeyPrefix,
       headers: headers,
-      streamFormat: GenuiXStreamFormat.openai,
+      streamFormat: _openaiProfile.streamFormat,
       requestBodyOverrides: requestBodyOverrides,
       systemPromptFragments: systemPromptFragments,
       debug: debug,
+      debugVerbose: debugVerbose,
       surfaceOperations: surfaceOperations,
       clientDataModel: clientDataModel,
       maxRetries: maxRetries,
@@ -217,6 +280,7 @@ class GenuiXTransport implements Transport {
     Map<String, Object?> requestBodyOverrides = const <String, Object?>{},
     List<String> systemPromptFragments = const <String>[],
     bool debug = false,
+    bool debugVerbose = false,
     SurfaceOperations? surfaceOperations,
     Map<String, Object?>? clientDataModel,
     int maxRetries = 3,
@@ -226,16 +290,17 @@ class GenuiXTransport implements Transport {
       catalog: catalog,
       model: model,
       baseUrl: baseUrl,
-      endpointPath: '/v1/messages',
+      endpointPath: _anthropicProfile.endpointPath,
       maxTokens: maxTokens,
       httpClient: httpClient,
-      apiKeyHeader: 'x-api-key',
-      apiKeyPrefix: '',
+      apiKeyHeader: _anthropicProfile.apiKeyHeader,
+      apiKeyPrefix: _anthropicProfile.apiKeyPrefix,
       headers: headers,
-      streamFormat: GenuiXStreamFormat.anthropic,
+      streamFormat: _anthropicProfile.streamFormat,
       requestBodyOverrides: requestBodyOverrides,
       systemPromptFragments: systemPromptFragments,
       debug: debug,
+      debugVerbose: debugVerbose,
       surfaceOperations: surfaceOperations,
       clientDataModel: clientDataModel,
       maxRetries: maxRetries,
@@ -274,6 +339,7 @@ class GenuiXTransport implements Transport {
     Map<String, Object?> requestBodyOverrides = const <String, Object?>{},
     List<String> systemPromptFragments = const <String>[],
     bool debug = false,
+    bool debugVerbose = false,
     SurfaceOperations? surfaceOperations,
     Map<String, Object?>? clientDataModel,
     int maxRetries = 0,
@@ -290,6 +356,7 @@ class GenuiXTransport implements Transport {
       requestBodyOverrides: requestBodyOverrides,
       systemPromptFragments: systemPromptFragments,
       debug: debug,
+      debugVerbose: debugVerbose,
       surfaceOperations: surfaceOperations,
       clientDataModel: clientDataModel,
       maxRetries: maxRetries,
@@ -332,6 +399,7 @@ class GenuiXTransport implements Transport {
     Map<String, Object?> requestBodyOverrides = const <String, Object?>{},
     List<String> systemPromptFragments = const <String>[],
     bool debug = false,
+    bool debugVerbose = false,
     SurfaceOperations? surfaceOperations,
     Map<String, Object?>? clientDataModel,
     int maxRetries = 3,
@@ -341,18 +409,17 @@ class GenuiXTransport implements Transport {
       catalog: catalog,
       model: model,
       baseUrl: baseUrl,
-      // {model} placeholder is substituted at request time. The Gemini
-      // endpoint embeds the model in the URL path.
-      endpointPath: '/v1beta/models/{model}:streamGenerateContent?alt=sse',
+      endpointPath: _geminiProfile.endpointPath,
       maxTokens: maxTokens,
       httpClient: httpClient,
-      apiKeyHeader: 'x-goog-api-key',
-      apiKeyPrefix: '',
+      apiKeyHeader: _geminiProfile.apiKeyHeader,
+      apiKeyPrefix: _geminiProfile.apiKeyPrefix,
       headers: headers,
-      streamFormat: GenuiXStreamFormat.gemini,
+      streamFormat: _geminiProfile.streamFormat,
       requestBodyOverrides: requestBodyOverrides,
       systemPromptFragments: systemPromptFragments,
       debug: debug,
+      debugVerbose: debugVerbose,
       surfaceOperations: surfaceOperations,
       clientDataModel: clientDataModel,
       maxRetries: maxRetries,
@@ -563,14 +630,67 @@ class GenuiXTransport implements Transport {
       throw GenuiXApiError(response.statusCode, body);
     }
 
+    _debugVerbose('parser=${_config.streamFormat.name}');
+    final byteStream = (_config.debug && _config.debugVerbose)
+        ? _tapRawSseLines(response.stream)
+        : response.stream;
+
     switch (_config.streamFormat) {
       case GenuiXStreamFormat.openai:
-        yield* _openaiSseParser.parse(response.stream);
+        yield* _logParsedChunks(_openaiSseParser.parse(byteStream));
       case GenuiXStreamFormat.gemini:
-        yield* _geminiSseParser.parse(response.stream);
+        yield* _logParsedChunks(_geminiSseParser.parse(byteStream));
       case GenuiXStreamFormat.anthropic:
-        yield* _anthropicSseParser.parse(response.stream);
+        yield* _logParsedChunks(_anthropicSseParser.parse(byteStream));
     }
+  }
+
+  Stream<List<int>> _tapRawSseLines(Stream<List<int>> source) async* {
+    var pending = '';
+    await for (final bytes in source) {
+      final chunk = utf8.decode(bytes, allowMalformed: true);
+      final combined = pending + chunk;
+      final lines = combined.split('\n');
+      pending = lines.removeLast();
+
+      for (final line in lines) {
+        final trimmed = line.trimRight();
+        if (trimmed.isEmpty) {
+          continue;
+        }
+        if (trimmed.startsWith('data:')) {
+          _debugVerbose('sse ${_truncate(trimmed)}');
+        }
+      }
+
+      yield bytes;
+    }
+
+    if (pending.trim().startsWith('data:')) {
+      _debugVerbose('sse ${_truncate(pending.trim())}');
+    }
+  }
+
+  Stream<String> _logParsedChunks(Stream<String> source) async* {
+    await for (final chunk in source) {
+      _debugVerbose('chunk len=${chunk.length} preview=${_truncate(chunk)}');
+      yield chunk;
+    }
+  }
+
+  void _debugVerbose(String message) {
+    if (!_config.debug || !_config.debugVerbose) {
+      return;
+    }
+    debugPrint('[genui_x][verbose] $message');
+  }
+
+  String _truncate(String value, {int max = 220}) {
+    final normalized = value.replaceAll('\n', r'\n').replaceAll('\r', r'\r');
+    if (normalized.length <= max) {
+      return normalized;
+    }
+    return '${normalized.substring(0, max)}…';
   }
 
   /// Builds the request URI for the active stream format.
@@ -601,11 +721,18 @@ class GenuiXTransport implements Transport {
         payload.addAll(_config.requestBodyOverrides);
         return payload;
       case GenuiXStreamFormat.openai:
+        // OpenAI's Chat Completions API has no top-level `system` parameter —
+        // the system prompt must be the first entry in `messages` with role
+        // `system`, otherwise the model never receives the A2UI catalog
+        // instructions. (Anthropic, by contrast, does take a top-level
+        // `system`, which is why that case below keeps it.)
         final payload = <String, Object?>{
           'model': _config.model,
           'max_tokens': _config.maxTokens,
-          'system': _systemPrompt,
-          'messages': _history,
+          'messages': [
+            {'role': 'system', 'content': _systemPrompt},
+            ..._history,
+          ],
           'stream': true,
         };
         if (_config.enforceJsonMode &&

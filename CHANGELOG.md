@@ -1,3 +1,25 @@
+## Unreleased
+
+* **Fix:** OpenAI-compatible backends (OpenAI, OpenRouter, LiteLLM, Ollama)
+  now receive the system prompt as a `system`-role message instead of a
+  top-level `system` field, which the Chat Completions API ignores. Before
+  this fix the A2UI catalog and surface-operation instructions never reached
+  the model on those providers, so generative UI output was unreliable.
+  Anthropic (top-level `system`) and Gemini (`systemInstruction`) were
+  already correct and are unchanged.
+* Add a provider wire-format conformance test suite
+  (`test/provider_conformance_test.dart`) that decodes the request body and
+  asserts each provider's exact payload shape, locking the contract above so
+  the system prompt can't silently move to the wrong field again.
+* Internal: centralise each provider's wire identity (endpoint path, auth
+  header, key prefix, stream format) into a single `_ProviderProfile` table
+  instead of hand-copying those constants into every factory. No behavioural
+  change — purely makes adding or maintaining a backend safer.
+* Add `debugVerbose` to `GenuiXConfig` and all `GenuiXTransport` constructors
+  and factories. When combined with `debug: true`, it logs parser selection,
+  raw SSE `data:` lines, and safe-truncated chunk previews to help diagnose
+  proxy stream issues.
+
 ## 0.0.13
 
 * Upgrade dependency to `genui: ^0.9.2` in both the package and example app.

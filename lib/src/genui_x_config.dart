@@ -40,6 +40,7 @@ class GenuiXConfig {
     this.requestBodyOverrides = const <String, Object?>{},
     this.systemPromptFragments = const <String>[],
     this.debug = false,
+    this.debugVerbose = false,
     this.surfaceOperations,
     this.clientDataModel,
     this.maxRetries = 3,
@@ -117,6 +118,14 @@ class GenuiXConfig {
   /// Logs the request URL, model, status code, and any errors via [debugPrint].
   /// Useful for debugging proxy configuration issues.
   final bool debug;
+
+  /// Whether to print verbose diagnostics for streaming responses.
+  ///
+  /// When enabled, the transport logs selected parser format, raw SSE lines,
+  /// and emitted text chunk previews. Only applies when [debug] is also `true`.
+  ///
+  /// Defaults to `false`.
+  final bool debugVerbose;
 
   /// Controls which A2UI surface operations the AI is allowed to perform.
   ///
