@@ -11,6 +11,10 @@
   (`test/provider_conformance_test.dart`) that decodes the request body and
   asserts each provider's exact payload shape, locking the contract above so
   the system prompt can't silently move to the wrong field again.
+* Internal: centralise each provider's wire identity (endpoint path, auth
+  header, key prefix, stream format) into a single `_ProviderProfile` table
+  instead of hand-copying those constants into every factory. No behavioural
+  change — purely makes adding or maintaining a backend safer.
 * Add `debugVerbose` to `GenuiXConfig` and all `GenuiXTransport` constructors
   and factories. When combined with `debug: true`, it logs parser selection,
   raw SSE `data:` lines, and safe-truncated chunk previews to help diagnose
