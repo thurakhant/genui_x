@@ -243,6 +243,20 @@ void main() {
       t.dispose();
     });
 
+    test('skips outbound request when user message is empty', () async {
+      final client = _CapturingHttpClient();
+      final t = GenuiXTransport(
+        apiKey: 'test-key',
+        catalog: _catalog,
+        httpClient: client,
+      );
+
+      await t.sendRequest(ChatMessage.user('   '));
+
+      expect(client.lastRequestBody, isNull);
+      t.dispose();
+    });
+
     test(
       'clearHistory() allows a fresh request after previous messages',
       () async {
@@ -864,6 +878,65 @@ void main() {
         t.sendRequest(ChatMessage.user('hello')),
         throwsA(isA<GenuiXAuthError>()),
       );
+      t.dispose();
+    });
+
+    test('debugVerbose: true with debug: false does not throw', () async {
+      final t = GenuiXTransport(
+        apiKey: 'test-key',
+        catalog: _catalog,
+        debug: false,
+        debugVerbose: true,
+        httpClient: _MockHttpClient((_) async => _response(401, 'stop')),
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      t.dispose();
+    });
+
+    test('debugVerbose: true with debug: true does not throw', () async {
+      final t = GenuiXTransport.openai(
+        apiKey: 'sk-test',
+        catalog: _catalog,
+        debug: true,
+        debugVerbose: true,
+        httpClient: _MockHttpClient((_) async => _response(401, 'stop')),
+      );
+      await expectLater(
+        t.sendRequest(ChatMessage.user('hello')),
+        throwsA(isA<GenuiXAuthError>()),
+      );
+      t.dispose();
+    });
+  });
+
+  group('GenuiXTransport — API error chunk safety', () {
+    test('does not emit A2UI validation errors on API error body', () async {
+      final t = _transport(
+        httpClient: _MockHttpClient(
+          (_) async => _response(
+            400,
+            '{"error":{"message":"messages: text content blocks must be non-empty"}}',
+          ),
+        ),
+      );
+
+      final streamErrors = <Object>[];
+      final textSub = t.incomingText.listen((_) {}, onError: streamErrors.add);
+      final messageSub = t.incomingMessages.listen(
+        (_) {},
+        onError: streamErrors.add,
+      );
+
+      await t.sendRequest(ChatMessage.user('hello'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(streamErrors, isEmpty);
+
+      await textSub.cancel();
+      await messageSub.cancel();
       t.dispose();
     });
   });

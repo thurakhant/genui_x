@@ -43,20 +43,78 @@ class _TravelChatPageState extends State<TravelChatPage> {
   final _scrollController = ScrollController();
   final _entries = <_ChatEntry>[];
   bool _isWaiting = false;
+  bool _hasPendingResult = false;
+  late final VoidCallback _loadingListener;
 
   @override
   void initState() {
     super.initState();
-    _transport = GenuiXTransport.anthropic(
+    const baseUrl = String.fromEnvironment(
+      'CLAUDE_BASE_URL',
+      defaultValue: 'https://api.anthropic.com',
+    );
+    const streamFormatRaw = String.fromEnvironment(
+      'CLAUDE_STREAM_FORMAT',
+      defaultValue: 'anthropic',
+    );
+    final streamFormat = streamFormatRaw == 'openai'
+        ? GenuiXStreamFormat.openai
+        : GenuiXStreamFormat.anthropic;
+    const endpointPathEnv = String.fromEnvironment('CLAUDE_ENDPOINT_PATH');
+    final endpointPath = endpointPathEnv.isEmpty
+        ? (streamFormat == GenuiXStreamFormat.openai
+            ? '/v1/chat/completions'
+            : '/v1/messages')
+        : endpointPathEnv;
+    const apiKeyHeaderEnv = String.fromEnvironment('CLAUDE_API_KEY_HEADER');
+    final apiKeyHeader = apiKeyHeaderEnv.isEmpty
+        ? (streamFormat == GenuiXStreamFormat.openai
+            ? 'authorization'
+            : 'x-api-key')
+        : apiKeyHeaderEnv;
+    const apiKeyPrefixEnv = String.fromEnvironment('CLAUDE_API_KEY_PREFIX');
+    final apiKeyPrefix = apiKeyPrefixEnv.isEmpty
+        ? (streamFormat == GenuiXStreamFormat.openai ? 'Bearer ' : '')
+        : apiKeyPrefixEnv;
+    const debug = bool.fromEnvironment('GENUIX_DEBUG', defaultValue: false);
+
+    _transport = GenuiXTransport(
       apiKey: widget.apiKey,
       catalog: travelCatalog,
       model: 'claude-sonnet-4-6',
+      baseUrl: baseUrl,
+      endpointPath: endpointPath,
+      apiKeyHeader: apiKeyHeader,
+      apiKeyPrefix: apiKeyPrefix,
+      streamFormat: streamFormat,
+      requestBodyOverrides: streamFormat == GenuiXStreamFormat.openai
+          ? const {
+              'response_format': {'type': 'json_object'},
+            }
+          : const <String, Object?>{},
+      debug: debug,
     );
-    _controller = SurfaceController(catalogs: [travelCatalog]);
+    _controller = SurfaceController(
+      catalogs: [travelCatalog, travelCatalogLegacy],
+    );
+    if (debug) {
+      debugPrint(
+        '[travel_chat] catalogs: ${travelCatalog.catalogId}, ${travelCatalogLegacy.catalogId}',
+      );
+    }
     _conversation = Conversation(
       controller: _controller,
       transport: _transport,
     );
+    _loadingListener = () {
+      if (!mounted) return;
+      final loading = _transport.isLoading.value;
+      final waiting = loading || _hasPendingResult;
+      if (_isWaiting != waiting) {
+        setState(() => _isWaiting = waiting);
+      }
+    };
+    _transport.isLoading.addListener(_loadingListener);
     _conversation.events.listen(_handleEvent);
   }
 
@@ -64,8 +122,19 @@ class _TravelChatPageState extends State<TravelChatPage> {
     if (event is ConversationWaiting) {
       setState(() => _isWaiting = true);
     } else if (event is ConversationContentReceived) {
+      if (_conversation.state.value.surfaces.isNotEmpty) {
+        setState(() {
+          _hasPendingResult = false;
+          _isWaiting = _transport.isLoading.value;
+        });
+        return;
+      }
+      if (event.text.trim().isEmpty) {
+        return;
+      }
       setState(() {
-        _isWaiting = false;
+        _hasPendingResult = false;
+        _isWaiting = _transport.isLoading.value;
         final idx = _lastAssistantText();
         if (idx >= 0) {
           _entries[idx] = _AssistantTextEntry(text: event.text);
@@ -77,7 +146,8 @@ class _TravelChatPageState extends State<TravelChatPage> {
     } else if (event is ConversationSurfaceAdded) {
       final surfaceCount = _conversation.state.value.surfaces.length;
       setState(() {
-        _isWaiting = false;
+        _hasPendingResult = false;
+        _isWaiting = _transport.isLoading.value;
         final placeholderIdx = _lastAssistantText();
         if (placeholderIdx >= 0) _entries.removeAt(placeholderIdx);
         _entries.add(_SurfaceEntry(surfaceCount - 1));
@@ -87,6 +157,7 @@ class _TravelChatPageState extends State<TravelChatPage> {
       setState(() {});
     } else if (event is ConversationError) {
       setState(() {
+        _hasPendingResult = false;
         _isWaiting = false;
         final idx = _lastAssistantText();
         if (idx >= 0) _entries.removeAt(idx);
@@ -106,13 +177,14 @@ class _TravelChatPageState extends State<TravelChatPage> {
     return -1;
   }
 
-  Future<void> _sendMessage() async {
-    final text = _textController.text.trim();
+  Future<void> _sendMessage([String? submittedText]) async {
+    final text = (submittedText ?? _textController.text).trim();
     if (text.isEmpty || _isWaiting) return;
     _textController.clear();
     setState(() {
       _entries.add(_UserEntry(text));
       _entries.add(_AssistantTextEntry(isStreaming: true));
+      _hasPendingResult = true;
       _isWaiting = true;
     });
     _scrollToBottom();
@@ -133,6 +205,7 @@ class _TravelChatPageState extends State<TravelChatPage> {
 
   @override
   void dispose() {
+    _transport.isLoading.removeListener(_loadingListener);
     _conversation.dispose();
     _controller.dispose();
     _transport.dispose();
@@ -158,6 +231,7 @@ class _TravelChatPageState extends State<TravelChatPage> {
       ),
       body: Column(
         children: [
+          if (_isWaiting) const LinearProgressIndicator(minHeight: 2),
           Expanded(
             child: _entries.isEmpty
                 ? const _EmptyState()
@@ -185,8 +259,9 @@ class _TravelChatPageState extends State<TravelChatPage> {
   Widget _buildEntry(_ChatEntry entry, List<dynamic> surfaces) {
     return switch (entry) {
       _UserEntry e => _UserBubble(text: e.text),
-      _AssistantTextEntry e =>
-        e.isStreaming ? const _TypingIndicator() : _AssistantBubble(text: e.text),
+      _AssistantTextEntry e => e.isStreaming
+          ? const _TypingIndicator()
+          : _AssistantBubble(text: e.text),
       _SurfaceEntry e when e.surfaceIndex < surfaces.length => Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Surface(
@@ -218,7 +293,7 @@ class _EmptyState extends StatelessWidget {
           Text(
             'Try: "Plan me 5 days in Tokyo"',
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.5),
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
             ),
           ),
         ],
@@ -354,7 +429,11 @@ class _InputBar extends StatelessWidget {
                   vertical: 10,
                 ),
               ),
-              onSubmitted: (_) => onSend(),
+              enabled: !isWaiting,
+              onSubmitted: (value) {
+                if (value.trim().isEmpty || isWaiting) return;
+                onSend();
+              },
               textInputAction: TextInputAction.send,
             ),
           ),

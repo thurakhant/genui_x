@@ -18,8 +18,8 @@ class AnthropicSseParser {
   }
 
   void _handleLine(String line, EventSink<String> sink) {
-    if (line.startsWith('data: ')) {
-      final data = line.substring(6).trim();
+    if (line.startsWith('data:')) {
+      final data = line.substring(5).trim();
       if (data == '[DONE]') return;
 
       try {

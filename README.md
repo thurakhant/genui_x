@@ -34,7 +34,7 @@ final transport = GenuiXTransport.anthropic(  // or .openai() / .gemini() / .oll
 | Ollama (local) | `GenuiXTransport.ollama()` | ✅ | ✅ via `enforceJsonMode` | `Authorization: Bearer` (placeholder) | `llama3.2` |
 | Custom proxy | `GenuiXTransport(...)` | ✅ | via `requestBodyOverrides` | configurable | configurable |
 
-All providers share the same retry-on-429, cancel, `clearHistory`, `isLoading`, and `debug` controls.
+All providers share the same retry-on-429, cancel, `clearHistory`, `isLoading`, `debug`, and `debugVerbose` controls.
 
 ---
 
@@ -66,7 +66,7 @@ Your App
 # pubspec.yaml
 dependencies:
   genui: ^0.9.2
-  genui_x: ^0.0.12
+  genui_x: ^0.0.13
 ```
 
 ### 2. Create your catalog
@@ -292,6 +292,7 @@ final transport = GenuiXTransport(
   apiKey: 'your-key',
   catalog: myCatalog,
   debug: true, // prints request URL, status code, and errors to console
+  // debugVerbose: true, // optional — logs raw SSE frames and parser chunk previews
 );
 ```
 
@@ -360,3 +361,12 @@ flutter run -t lib/ollama_main.dart \
 - **Streaming only** — non-streaming mode is not supported.
 - **Flutter Web** — direct API calls to Anthropic or OpenAI will fail due to CORS. Use `baseUrl` to route through a backend proxy.
 - **genui alpha** — genui itself is in early development; breaking changes may occur.
+
+---
+
+## Troubleshooting
+
+- **HTTP 200 but no UI yet** — `200` means the stream opened. UI appears only after valid A2UI chunks (`createSurface` + `updateComponents`) are parsed.
+- **Proxy SSE format differences** — `genui_x` accepts both `data: {...}` and `data:{...}` SSE line formats used by OpenAI-compatible proxies.
+- **Catalog ID mismatch** — ensure the model emits the same `catalogId` that your `SurfaceController` registered.
+- **Component props shape** — some models emit props flat while others wrap under `data`; make your `widgetBuilder` tolerate both for resilience.
