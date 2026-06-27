@@ -1,4 +1,4 @@
-## Unreleased
+## 0.0.14
 
 * **Fix:** OpenAI-compatible backends (OpenAI, OpenRouter, LiteLLM, Ollama)
   now receive the system prompt as a `system`-role message instead of a
