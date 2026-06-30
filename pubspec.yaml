@@ -1,6 +1,6 @@
 name: genui_x
 description: "Connect any LLM — Claude, OpenAI, Gemini, Ollama, or a custom proxy — to Google's genui (Generative UI) framework with one Transport."
-version: 0.0.13
+version: 0.0.14
 repository: https://github.com/thurakhant/genui_x
 issue_tracker: https://github.com/thurakhant/genui_x/issues
 homepage: https://github.com/thurakhant/genui_x

@@ -66,7 +66,7 @@ Your App
 # pubspec.yaml
 dependencies:
   genui: ^0.9.2
-  genui_x: ^0.0.13
+  genui_x: ^0.0.14
 ```
 
 ### 2. Create your catalog
