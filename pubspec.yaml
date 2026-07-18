@@ -17,10 +17,13 @@ topics:
   - openai
 
 # Screenshots show up on the pub.dev package page. Each path must exist or
-# `dart pub publish` will fail. Keep the file under 4 MB.
-screenshots:
-  - description: "genui_x rendering an AI-generated card from a chat prompt."
-    path: screenshots/demo.gif
+# `dart pub publish` and CI's `flutter analyze --fatal-infos` will fail.
+# Uncomment in the SAME commit that adds screenshots/demo.gif (<4 MB) —
+# publishing 0.1.0 waits for that commit.
+#
+# screenshots:
+#   - description: "genui_x rendering an AI-generated card from a chat prompt."
+#     path: screenshots/demo.gif
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
