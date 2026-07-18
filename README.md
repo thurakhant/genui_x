@@ -7,6 +7,8 @@
 
 > **The missing backend for [Google's genui](https://pub.dev/packages/genui) framework.** One `Transport`, every major LLM — Anthropic Claude, OpenAI, Google Gemini, local Ollama, or any OpenAI-compatible proxy.
 
+**▶️ [Try it live](https://thurakhant.github.io/genui_x/)** — paste your own Anthropic API key and watch a prompt stream into a rendered widget. Nothing to install; your key never leaves the browser tab.
+
 <!--
   Demo GIF placeholder — record ~15 s of `example/lib/travel_main.dart`
   (prompt → streamed widget) and drop the file at `screenshots/demo.gif`,

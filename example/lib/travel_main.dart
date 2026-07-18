@@ -3,38 +3,112 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:genui/genui.dart';
 import 'package:genui_x/genui_x.dart';
 import 'package:json_schema_builder/json_schema_builder.dart';
 
 void main() {
+  // Compile-time key (`--dart-define=CLAUDE_API_KEY=...`). When absent the app
+  // asks for one at runtime, so the hosted web demo never ships a key.
   const apiKey = String.fromEnvironment('CLAUDE_API_KEY');
-  if (apiKey.isEmpty) {
-    throw Exception(
-      'CLAUDE_API_KEY not set. '
-      'Run with: flutter run -t lib/travel_main.dart '
-      '--dart-define=CLAUDE_API_KEY=your_key',
-    );
-  }
-
-  runApp(GenUiXTravelApp(apiKey: apiKey));
+  runApp(GenUiXTravelApp(apiKey: apiKey.isEmpty ? null : apiKey));
 }
 
 class GenUiXTravelApp extends StatelessWidget {
-  const GenUiXTravelApp({super.key, required this.apiKey});
+  const GenUiXTravelApp({super.key, this.apiKey});
 
-  final String apiKey;
+  final String? apiKey;
 
   @override
   Widget build(BuildContext context) {
+    final key = apiKey;
     return MaterialApp(
       title: 'GenUI X Travel',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
       ),
-      home: TravelChatPage(apiKey: apiKey),
+      home: key == null ? const ApiKeyGate() : TravelChatPage(apiKey: key),
+    );
+  }
+}
+
+/// Bring-your-own-key screen for the hosted demo. The key lives only in this
+/// page's state — it is sent nowhere except the provider API.
+class ApiKeyGate extends StatefulWidget {
+  const ApiKeyGate({super.key});
+
+  @override
+  State<ApiKeyGate> createState() => _ApiKeyGateState();
+}
+
+class _ApiKeyGateState extends State<ApiKeyGate> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _start() {
+    final key = _controller.text.trim();
+    if (key.isEmpty) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(builder: (_) => TravelChatPage(apiKey: key)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('GenUI + X (Travel)'),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Try genui_x live',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Paste an Anthropic API key to run the demo. The key stays '
+                  'in this browser tab and is sent only to api.anthropic.com — '
+                  'it is never stored or logged.',
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _controller,
+                  obscureText: true,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Anthropic API key',
+                    hintText: 'sk-ant-...',
+                    border: OutlineInputBorder(),
+                  ),
+                  onSubmitted: (_) => _start(),
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: _start,
+                  child: const Text('Start demo'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -94,6 +168,12 @@ class _TravelChatPageState extends State<TravelChatPage> {
             'response_format': {'type': 'json_object'},
           }
         : const <String, Object?>{};
+    // Anthropic requires this opt-in header before accepting direct calls
+    // from a browser (the BYOK web demo); it is ignored elsewhere.
+    final headers = <String, String>{
+      if (kIsWeb && streamFormat == GenuiXStreamFormat.anthropic)
+        'anthropic-dangerous-direct-browser-access': 'true',
+    };
     _transport = GenuiXTransport(
       apiKey: widget.apiKey,
       catalog: travelCatalog,
@@ -103,6 +183,7 @@ class _TravelChatPageState extends State<TravelChatPage> {
       apiKeyPrefix: apiKeyPrefix,
       streamFormat: streamFormat,
       requestBodyOverrides: requestBodyOverrides,
+      headers: headers,
       model: 'claude-sonnet-4-6',
     );
     _controller = SurfaceController(catalogs: [travelCatalog]);
