@@ -1,3 +1,21 @@
+## 0.1.0
+
+* **First minor release.** No breaking API changes from 0.0.14 — the version
+  bump signals the transport API is stable enough to depend on.
+* Upgrade to `genui: ^0.10.0` (same-week compatibility with the latest genui).
+  genui 0.10.0 moved `A2uiMessage` into the new `a2ui_core` package, so
+  genui_x now depends on `a2ui_core` directly; `incomingMessages` still emits
+  `A2uiMessage` — no change for callers.
+* **Upgrade note:** if an existing app fails to compile with
+  `Type 'SchemaRegistry' not found` inside genui after upgrading, your
+  lockfile is holding back `json_schema_builder`. Run
+  `flutter pub upgrade json_schema_builder` (genui 0.10.0 needs a newer
+  version than its constraint enforces).
+* Add the demo GIF to the README and enable the `screenshots:` block so it
+  shows on the pub.dev package page.
+* Enable web support on the example app and add a hosted, bring-your-own-key
+  "Try it live" demo linked from the README.
+
 ## 0.0.14
 
 * **Fix:** OpenAI-compatible backends (OpenAI, OpenRouter, LiteLLM, Ollama)

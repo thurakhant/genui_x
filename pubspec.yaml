@@ -1,6 +1,6 @@
 name: genui_x
 description: "Connect any LLM — Claude, OpenAI, Gemini, Ollama, or a custom proxy — to Google's genui (Generative UI) framework with one Transport."
-version: 0.0.14
+version: 0.1.0
 repository: https://github.com/thurakhant/genui_x
 issue_tracker: https://github.com/thurakhant/genui_x/issues
 homepage: https://github.com/thurakhant/genui_x
@@ -16,13 +16,11 @@ topics:
   - gemini
   - openai
 
-# Screenshots show up on the pub.dev package page. Uncomment + commit the file
-# under `screenshots/` to enable. Each path must exist or `dart pub publish`
-# will fail. Recommended: a 1280x720 PNG or animated WebP under 4 MB.
-#
-# screenshots:
-#   - description: "genui_x rendering an AI-generated weather card from a chat prompt."
-#     path: screenshots/travel_demo.png
+# Screenshots show up on the pub.dev package page. Each path must exist or
+# `dart pub publish` will fail. Keep the file under 4 MB.
+screenshots:
+  - description: "genui_x rendering an AI-generated card from a chat prompt."
+    path: screenshots/demo.gif
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
@@ -31,7 +29,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  genui: ^0.9.2
+  # genui 0.10.0 stopped re-exporting A2uiMessage; it now lives in a2ui_core.
+  a2ui_core: ^0.0.1-dev002
+  genui: ^0.10.0
   http: ^1.6.0
 
 dev_dependencies:

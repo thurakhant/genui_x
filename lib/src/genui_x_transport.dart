@@ -4,6 +4,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:a2ui_core/a2ui_core.dart' show A2uiMessage;
 import 'package:flutter/foundation.dart';
 import 'package:genui/genui.dart';
 import 'package:http/http.dart' as http;
