@@ -35,8 +35,32 @@ class GenUiXTravelApp extends StatelessWidget {
   }
 }
 
+/// Providers selectable in the hosted demo. Ollama is omitted — it runs on
+/// the visitor's machine, which a hosted page can't reach.
+enum DemoProvider { anthropic, openai, gemini }
+
+extension DemoProviderInfo on DemoProvider {
+  String get label => switch (this) {
+        DemoProvider.anthropic => 'Claude',
+        DemoProvider.openai => 'OpenAI',
+        DemoProvider.gemini => 'Gemini',
+      };
+
+  String get keyHint => switch (this) {
+        DemoProvider.anthropic => 'sk-ant-...',
+        DemoProvider.openai => 'sk-...',
+        DemoProvider.gemini => 'AIza...',
+      };
+
+  String get apiHost => switch (this) {
+        DemoProvider.anthropic => 'api.anthropic.com',
+        DemoProvider.openai => 'api.openai.com',
+        DemoProvider.gemini => 'generativelanguage.googleapis.com',
+      };
+}
+
 /// Bring-your-own-key screen for the hosted demo. The key lives only in this
-/// page's state — it is sent nowhere except the provider API.
+/// page's state — it is sent nowhere except the selected provider's API.
 class ApiKeyGate extends StatefulWidget {
   const ApiKeyGate({super.key});
 
@@ -46,6 +70,7 @@ class ApiKeyGate extends StatefulWidget {
 
 class _ApiKeyGateState extends State<ApiKeyGate> {
   final _controller = TextEditingController();
+  DemoProvider _provider = DemoProvider.anthropic;
 
   @override
   void dispose() {
@@ -57,7 +82,9 @@ class _ApiKeyGateState extends State<ApiKeyGate> {
     final key = _controller.text.trim();
     if (key.isEmpty) return;
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => TravelChatPage(apiKey: key)),
+      MaterialPageRoute<void>(
+        builder: (_) => TravelChatPage(apiKey: key, provider: _provider),
+      ),
     );
   }
 
@@ -70,7 +97,7 @@ class _ApiKeyGateState extends State<ApiKeyGate> {
       ),
       body: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
+          constraints: const BoxConstraints(maxWidth: 460),
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -83,21 +110,36 @@ class _ApiKeyGateState extends State<ApiKeyGate> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Paste an Anthropic API key to run the demo. The key stays '
-                  'in this browser tab and is sent only to api.anthropic.com — '
-                  'it is never stored or logged.',
+                  'One Transport, any LLM. Pick a provider, paste your own '
+                  'API key, and watch a prompt stream into a rendered widget.',
+                ),
+                const SizedBox(height: 16),
+                SegmentedButton<DemoProvider>(
+                  segments: [
+                    for (final p in DemoProvider.values)
+                      ButtonSegment(value: p, label: Text(p.label)),
+                  ],
+                  selected: {_provider},
+                  onSelectionChanged: (selection) =>
+                      setState(() => _provider = selection.first),
                 ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: _controller,
                   obscureText: true,
                   autofocus: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Anthropic API key',
-                    hintText: 'sk-ant-...',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: '${_provider.label} API key',
+                    hintText: _provider.keyHint,
+                    border: const OutlineInputBorder(),
                   ),
                   onSubmitted: (_) => _start(),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'The key stays in this browser tab and is sent only to '
+                  '${_provider.apiHost} — never stored or logged.',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: 16),
                 FilledButton(
@@ -114,9 +156,13 @@ class _ApiKeyGateState extends State<ApiKeyGate> {
 }
 
 class TravelChatPage extends StatefulWidget {
-  const TravelChatPage({super.key, required this.apiKey});
+  const TravelChatPage({super.key, required this.apiKey, this.provider});
 
   final String apiKey;
+
+  /// Set when the key came from [ApiKeyGate]. When null (compile-time key),
+  /// the transport is configured from `--dart-define` values as before.
+  final DemoProvider? provider;
 
   @override
   State<TravelChatPage> createState() => _TravelChatPageState();
@@ -136,6 +182,65 @@ class _TravelChatPageState extends State<TravelChatPage> {
   @override
   void initState() {
     super.initState();
+    _transport = _buildTransport();
+    _controller = SurfaceController(catalogs: [travelCatalog]);
+    _conversation =
+        Conversation(controller: _controller, transport: _transport);
+
+    _conversation.events.listen((event) {
+      if (event is ConversationContentReceived) {
+        setState(() {
+          _assistantText = event.text;
+          _errorText = null;
+          _isWaiting = false;
+        });
+        _startTypingAnimation(event.text);
+      } else if (event is ConversationWaiting) {
+        setState(() => _isWaiting = true);
+      } else if (event is ConversationError) {
+        setState(() {
+          _isWaiting = false;
+          _errorText = event.error.toString();
+        });
+      } else if (event is ConversationSurfaceAdded ||
+          event is ConversationComponentsUpdated) {
+        setState(() => _isWaiting = false);
+      }
+    });
+  }
+
+  GenuiXTransport _buildTransport() {
+    // Anthropic requires this opt-in header before accepting direct calls
+    // from a browser (the BYOK web demo); it is ignored elsewhere.
+    final anthropicBrowserHeaders = <String, String>{
+      if (kIsWeb) 'anthropic-dangerous-direct-browser-access': 'true',
+    };
+    switch (widget.provider) {
+      case DemoProvider.anthropic:
+        return GenuiXTransport.anthropic(
+          apiKey: widget.apiKey,
+          catalog: travelCatalog,
+          model: 'claude-sonnet-4-6',
+          headers: anthropicBrowserHeaders,
+        );
+      case DemoProvider.openai:
+        return GenuiXTransport.openai(
+          apiKey: widget.apiKey,
+          catalog: travelCatalog,
+          enforceJsonMode: true,
+        );
+      case DemoProvider.gemini:
+        return GenuiXTransport.gemini(
+          apiKey: widget.apiKey,
+          catalog: travelCatalog,
+        );
+      case null:
+        return _buildTransportFromEnv(anthropicBrowserHeaders);
+    }
+  }
+
+  GenuiXTransport _buildTransportFromEnv(
+      Map<String, String> anthropicBrowserHeaders) {
     const baseUrl = String.fromEnvironment(
       'CLAUDE_BASE_URL',
       defaultValue: 'https://api.anthropic.com',
@@ -168,13 +273,11 @@ class _TravelChatPageState extends State<TravelChatPage> {
             'response_format': {'type': 'json_object'},
           }
         : const <String, Object?>{};
-    // Anthropic requires this opt-in header before accepting direct calls
-    // from a browser (the BYOK web demo); it is ignored elsewhere.
     final headers = <String, String>{
-      if (kIsWeb && streamFormat == GenuiXStreamFormat.anthropic)
-        'anthropic-dangerous-direct-browser-access': 'true',
+      if (streamFormat == GenuiXStreamFormat.anthropic)
+        ...anthropicBrowserHeaders,
     };
-    _transport = GenuiXTransport(
+    return GenuiXTransport(
       apiKey: widget.apiKey,
       catalog: travelCatalog,
       baseUrl: baseUrl,
@@ -186,30 +289,6 @@ class _TravelChatPageState extends State<TravelChatPage> {
       headers: headers,
       model: 'claude-sonnet-4-6',
     );
-    _controller = SurfaceController(catalogs: [travelCatalog]);
-    _conversation =
-        Conversation(controller: _controller, transport: _transport);
-
-    _conversation.events.listen((event) {
-      if (event is ConversationContentReceived) {
-        setState(() {
-          _assistantText = event.text;
-          _errorText = null;
-          _isWaiting = false;
-        });
-        _startTypingAnimation(event.text);
-      } else if (event is ConversationWaiting) {
-        setState(() => _isWaiting = true);
-      } else if (event is ConversationError) {
-        setState(() {
-          _isWaiting = false;
-          _errorText = event.error.toString();
-        });
-      } else if (event is ConversationSurfaceAdded ||
-          event is ConversationComponentsUpdated) {
-        setState(() => _isWaiting = false);
-      }
-    });
   }
 
   @override
