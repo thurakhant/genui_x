@@ -3,11 +3,13 @@
 
 import 'dart:async';
 
+import 'package:a2ui_flutter/a2ui_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:genui/genui.dart';
 import 'package:genui_x/genui_x.dart';
 import 'package:json_schema_builder/json_schema_builder.dart';
+
+import 'src/surface_renderer.dart';
 
 void main() {
   // Compile-time key (`--dart-define=CLAUDE_API_KEY=...`). When absent the app
@@ -170,8 +172,8 @@ class TravelChatPage extends StatefulWidget {
 
 class _TravelChatPageState extends State<TravelChatPage> {
   late final GenuiXTransport _transport;
-  late final SurfaceController _controller;
-  late final Conversation _conversation;
+  late final SurfaceRenderer _renderer;
+  late final StreamSubscription<String> _textSubscription;
 
   bool _isWaiting = false;
   String _assistantText = '';
@@ -183,30 +185,24 @@ class _TravelChatPageState extends State<TravelChatPage> {
   void initState() {
     super.initState();
     _transport = _buildTransport();
-    _controller = SurfaceController(catalogs: [travelCatalog]);
-    _conversation =
-        Conversation(controller: _controller, transport: _transport);
+    _renderer = SurfaceRenderer(
+      transport: _transport,
+      catalogs: [travelCatalog],
+    );
 
-    _conversation.events.listen((event) {
-      if (event is ConversationContentReceived) {
-        setState(() {
-          _assistantText = event.text;
-          _errorText = null;
-          _isWaiting = false;
-        });
-        _startTypingAnimation(event.text);
-      } else if (event is ConversationWaiting) {
-        setState(() => _isWaiting = true);
-      } else if (event is ConversationError) {
-        setState(() {
-          _isWaiting = false;
-          _errorText = event.error.toString();
-        });
-      } else if (event is ConversationSurfaceAdded ||
-          event is ConversationComponentsUpdated) {
-        setState(() => _isWaiting = false);
-      }
+    _textSubscription = _transport.incomingText.listen((text) {
+      setState(() {
+        _assistantText = text;
+        _errorText = null;
+        _isWaiting = false;
+      });
+      _startTypingAnimation(text);
     });
+    _renderer.surfaces.addListener(_onSurfacesChanged);
+  }
+
+  void _onSurfacesChanged() {
+    setState(() => _isWaiting = false);
   }
 
   GenuiXTransport _buildTransport() {
@@ -227,7 +223,6 @@ class _TravelChatPageState extends State<TravelChatPage> {
         return GenuiXTransport.openai(
           apiKey: widget.apiKey,
           catalog: travelCatalog,
-          enforceJsonMode: true,
         );
       case DemoProvider.gemini:
         return GenuiXTransport.gemini(
@@ -268,11 +263,6 @@ class _TravelChatPageState extends State<TravelChatPage> {
     final apiKeyPrefix = apiKeyPrefixEnv.isEmpty
         ? (streamFormat == GenuiXStreamFormat.openai ? 'Bearer ' : '')
         : apiKeyPrefixEnv;
-    final requestBodyOverrides = streamFormat == GenuiXStreamFormat.openai
-        ? const {
-            'response_format': {'type': 'json_object'},
-          }
-        : const <String, Object?>{};
     final headers = <String, String>{
       if (streamFormat == GenuiXStreamFormat.anthropic)
         ...anthropicBrowserHeaders,
@@ -285,7 +275,6 @@ class _TravelChatPageState extends State<TravelChatPage> {
       apiKeyHeader: apiKeyHeader,
       apiKeyPrefix: apiKeyPrefix,
       streamFormat: streamFormat,
-      requestBodyOverrides: requestBodyOverrides,
       headers: headers,
       model: 'claude-sonnet-4-6',
     );
@@ -294,8 +283,9 @@ class _TravelChatPageState extends State<TravelChatPage> {
   @override
   void dispose() {
     _typingTimer?.cancel();
-    _conversation.dispose();
-    _controller.dispose();
+    _renderer.surfaces.removeListener(_onSurfacesChanged);
+    unawaited(_textSubscription.cancel());
+    _renderer.dispose();
     _transport.dispose();
     super.dispose();
   }
@@ -337,14 +327,20 @@ class _TravelChatPageState extends State<TravelChatPage> {
       _errorText = null;
     });
 
-    await _conversation.sendRequest(
-      ChatMessage.user('Plan a 3-day trip to Kyoto.'),
-    );
+    try {
+      await _transport.sendRequest('Plan a 3-day trip to Kyoto.');
+    } on Exception catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isWaiting = false;
+        _errorText = error.toString();
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = _conversation.state.value.surfaces;
+    final surfaces = _renderer.surfaces.value;
 
     return Scaffold(
       appBar: AppBar(
@@ -389,8 +385,9 @@ class _TravelChatPageState extends State<TravelChatPage> {
                 child: ListView.builder(
                   itemCount: surfaces.length,
                   itemBuilder: (context, index) {
-                    return Surface(
-                      surfaceContext: _controller.contextFor(surfaces[index]),
+                    return A2uiSurface(
+                      key: ObjectKey(surfaces[index]),
+                      surface: surfaces[index],
                     );
                   },
                 ),
@@ -442,9 +439,9 @@ class TravelPlanWidget extends StatelessWidget {
   }
 }
 
-final travelCatalogItem = CatalogItem(
+final travelCatalogItem = ComponentImplementation(
   name: 'TravelPlanWidget',
-  dataSchema: S.object(
+  schema: S.object(
     description: 'Shows a concise travel plan for a destination.',
     properties: {
       'destination': S.string(description: 'Destination city or country.'),
@@ -455,26 +452,25 @@ final travelCatalogItem = CatalogItem(
     },
     required: ['destination', 'days', 'highlights'],
   ),
-  widgetBuilder: (ctx) {
-    final data = ctx.data as Map<String, dynamic>;
+  builder: (context, node, props, buildChild) {
     return TravelPlanWidget(
-      destination: data['destination'] as String,
-      days: (data['days'] as num).toInt(),
-      highlights: (data['highlights'] as List<dynamic>)
-          .map((item) => item as String)
-          .toList(),
+      destination: props.string('destination') ?? '',
+      days: props.number('days')?.toInt() ?? 0,
+      highlights: [
+        for (final item in props.list('highlights'))
+          if (item is String) item,
+      ],
     );
   },
 );
 
-final travelCatalog = Catalog(
-  [travelCatalogItem],
-  catalogId: 'default',
-  systemPromptFragments: [
-    'For travel planning requests, use TravelPlanWidget to display the plan visually.',
-    'Every component object MUST have an "id" field. The root component must use "id":"root". '
-        'Widget properties go flat alongside "component" and "id" — no nesting. Example component:\n'
-        '{"id":"root","component":"TravelPlanWidget","destination":"Kyoto","days":3,'
-        '"highlights":["Fushimi Inari Shrine","Arashiyama Bamboo Grove"]}',
-  ],
+final travelCatalog = CatalogImplementation(
+  id: 'default',
+  components: [travelCatalogItem],
+  instructions:
+      'For travel planning requests, use TravelPlanWidget to display the plan visually.\n'
+      'Every component object MUST have an "id" field. The root component must use "id":"root". '
+      'Widget properties go flat alongside "component" and "id" — no nesting. Example component:\n'
+      '{"id":"root","component":"TravelPlanWidget","destination":"Kyoto","days":3,'
+      '"highlights":["Fushimi Inari Shrine","Arashiyama Bamboo Grove"]}',
 );

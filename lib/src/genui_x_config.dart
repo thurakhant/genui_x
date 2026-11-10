@@ -1,7 +1,7 @@
 // Copyright 2025 genui_x contributors.
 // SPDX-License-Identifier: BSD-3-Clause
 
-import 'package:genui/genui.dart';
+import 'surface_operations.dart';
 
 /// Supported streaming response formats.
 enum GenuiXStreamFormat {
@@ -99,16 +99,16 @@ class GenuiXConfig {
 
   /// Additional fragments to inject into the system prompt.
   ///
-  /// These are passed directly to [PromptBuilder.chat] and prepended to the
-  /// generated catalog schema. Use them to give the model a persona, restrict
-  /// its domain, inject the current date, or add any other instructions.
+  /// These are placed before the A2UI instructions and catalog schema. Use
+  /// them to give the model a persona, restrict its domain, inject the
+  /// current date, or add any other instructions.
   ///
   /// Example:
   /// ```dart
   /// systemPromptFragments: [
   ///   'You are Aria, a helpful travel assistant.',
   ///   'Always respond in English.',
-  ///   PromptFragments.currentDate(),
+  ///   'Current Date: ${DateTime.now().toIso8601String().split('T').first}',
   /// ]
   /// ```
   final List<String> systemPromptFragments;
@@ -129,12 +129,12 @@ class GenuiXConfig {
 
   /// Controls which A2UI surface operations the AI is allowed to perform.
   ///
-  /// When set, [PromptBuilder.custom] is used instead of [PromptBuilder.chat],
-  /// giving you fine-grained control over whether the AI can create, update,
+  /// Gives you fine-grained control over whether the AI can create, update,
   /// or delete surfaces.
   ///
-  /// Defaults to `null`, which uses [PromptBuilder.chat] with
-  /// [SurfaceOperations.createOnly].
+  /// Defaults to `null`, which means
+  /// `SurfaceOperations.createOnly(dataModel: false)`: each reply creates new
+  /// surfaces.
   ///
   /// Example — allow full create + update + delete:
   /// ```dart
@@ -165,8 +165,9 @@ class GenuiXConfig {
 
   /// When `true` and [streamFormat] is [GenuiXStreamFormat.openai], injects
   /// `response_format: {"type": "json_object"}` into the request body so the
-  /// model is constrained to emit valid JSON — improves A2UI compliance on
-  /// OpenAI and OpenAI-compatible backends.
+  /// model is constrained to emit one JSON object. The A2UI prompt asks for
+  /// `<a2ui-json>` blocks inside text, which such a reply cannot hold, so
+  /// leave this off for generative UI.
   ///
   /// Has no effect on Anthropic or Gemini formats. Ignored if the user
   /// supplies their own `response_format` via [requestBodyOverrides].

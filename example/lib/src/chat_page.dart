@@ -1,10 +1,14 @@
 // Copyright 2025 genui_x contributors.
 // SPDX-License-Identifier: BSD-3-Clause
 
+import 'dart:async';
+
+import 'package:a2ui_core/a2ui_core.dart' show SurfaceModel;
+import 'package:a2ui_flutter/a2ui_flutter.dart';
 import 'package:flutter/material.dart';
-import 'package:genui/genui.dart';
 import 'package:genui_x/genui_x.dart';
 
+import 'surface_renderer.dart';
 import 'travel_catalog.dart';
 
 sealed class _ChatEntry {}
@@ -36,8 +40,8 @@ class TravelChatPage extends StatefulWidget {
 
 class _TravelChatPageState extends State<TravelChatPage> {
   late final GenuiXTransport _transport;
-  late final SurfaceController _controller;
-  late final Conversation _conversation;
+  late final SurfaceRenderer _renderer;
+  late final StreamSubscription<String> _textSubscription;
 
   final _textController = TextEditingController();
   final _scrollController = ScrollController();
@@ -87,25 +91,17 @@ class _TravelChatPageState extends State<TravelChatPage> {
       apiKeyHeader: apiKeyHeader,
       apiKeyPrefix: apiKeyPrefix,
       streamFormat: streamFormat,
-      requestBodyOverrides: streamFormat == GenuiXStreamFormat.openai
-          ? const {
-              'response_format': {'type': 'json_object'},
-            }
-          : const <String, Object?>{},
       debug: debug,
     );
-    _controller = SurfaceController(
+    _renderer = SurfaceRenderer(
+      transport: _transport,
       catalogs: [travelCatalog, travelCatalogLegacy],
     );
     if (debug) {
       debugPrint(
-        '[travel_chat] catalogs: ${travelCatalog.catalogId}, ${travelCatalogLegacy.catalogId}',
+        '[travel_chat] catalogs: ${travelCatalog.id}, ${travelCatalogLegacy.id}',
       );
     }
-    _conversation = Conversation(
-      controller: _controller,
-      transport: _transport,
-    );
     _loadingListener = () {
       if (!mounted) return;
       final loading = _transport.isLoading.value;
@@ -115,59 +111,58 @@ class _TravelChatPageState extends State<TravelChatPage> {
       }
     };
     _transport.isLoading.addListener(_loadingListener);
-    _conversation.events.listen(_handleEvent);
+    _textSubscription = _transport.incomingText.listen(_handleText);
+    _renderer.surfaces.addListener(_handleSurfaceAdded);
   }
 
-  void _handleEvent(ConversationEvent event) {
-    if (event is ConversationWaiting) {
-      setState(() => _isWaiting = true);
-    } else if (event is ConversationContentReceived) {
-      if (_conversation.state.value.surfaces.isNotEmpty) {
-        setState(() {
-          _hasPendingResult = false;
-          _isWaiting = _transport.isLoading.value;
-        });
-        return;
-      }
-      if (event.text.trim().isEmpty) {
-        return;
-      }
+  void _handleText(String text) {
+    if (_renderer.surfaces.value.isNotEmpty) {
       setState(() {
         _hasPendingResult = false;
         _isWaiting = _transport.isLoading.value;
-        final idx = _lastAssistantText();
-        if (idx >= 0) {
-          _entries[idx] = _AssistantTextEntry(text: event.text);
-        } else {
-          _entries.add(_AssistantTextEntry(text: event.text));
-        }
       });
-      _scrollToBottom();
-    } else if (event is ConversationSurfaceAdded) {
-      final surfaceCount = _conversation.state.value.surfaces.length;
-      setState(() {
-        _hasPendingResult = false;
-        _isWaiting = _transport.isLoading.value;
-        final placeholderIdx = _lastAssistantText();
-        if (placeholderIdx >= 0) _entries.removeAt(placeholderIdx);
-        _entries.add(_SurfaceEntry(surfaceCount - 1));
-      });
-      _scrollToBottom();
-    } else if (event is ConversationComponentsUpdated) {
-      setState(() {});
-    } else if (event is ConversationError) {
-      setState(() {
-        _hasPendingResult = false;
-        _isWaiting = false;
-        final idx = _lastAssistantText();
-        if (idx >= 0) _entries.removeAt(idx);
-        _entries.add(
-          _AssistantTextEntry(
-            text: 'Sorry, something went wrong. Please try again.',
-          ),
-        );
-      });
+      return;
     }
+    if (text.trim().isEmpty) {
+      return;
+    }
+    setState(() {
+      _hasPendingResult = false;
+      _isWaiting = _transport.isLoading.value;
+      final idx = _lastAssistantText();
+      if (idx >= 0) {
+        _entries[idx] = _AssistantTextEntry(text: text);
+      } else {
+        _entries.add(_AssistantTextEntry(text: text));
+      }
+    });
+    _scrollToBottom();
+  }
+
+  void _handleSurfaceAdded() {
+    final surfaceCount = _renderer.surfaces.value.length;
+    setState(() {
+      _hasPendingResult = false;
+      _isWaiting = _transport.isLoading.value;
+      final placeholderIdx = _lastAssistantText();
+      if (placeholderIdx >= 0) _entries.removeAt(placeholderIdx);
+      _entries.add(_SurfaceEntry(surfaceCount - 1));
+    });
+    _scrollToBottom();
+  }
+
+  void _handleError() {
+    setState(() {
+      _hasPendingResult = false;
+      _isWaiting = false;
+      final idx = _lastAssistantText();
+      if (idx >= 0) _entries.removeAt(idx);
+      _entries.add(
+        _AssistantTextEntry(
+          text: 'Sorry, something went wrong. Please try again.',
+        ),
+      );
+    });
   }
 
   int _lastAssistantText() {
@@ -188,7 +183,11 @@ class _TravelChatPageState extends State<TravelChatPage> {
       _isWaiting = true;
     });
     _scrollToBottom();
-    await _conversation.sendRequest(ChatMessage.user(text));
+    try {
+      await _transport.sendRequest(text);
+    } on Exception {
+      if (mounted) _handleError();
+    }
   }
 
   void _scrollToBottom() {
@@ -206,8 +205,9 @@ class _TravelChatPageState extends State<TravelChatPage> {
   @override
   void dispose() {
     _transport.isLoading.removeListener(_loadingListener);
-    _conversation.dispose();
-    _controller.dispose();
+    _renderer.surfaces.removeListener(_handleSurfaceAdded);
+    unawaited(_textSubscription.cancel());
+    _renderer.dispose();
     _transport.dispose();
     _textController.dispose();
     _scrollController.dispose();
@@ -216,7 +216,7 @@ class _TravelChatPageState extends State<TravelChatPage> {
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = _conversation.state.value.surfaces;
+    final surfaces = _renderer.surfaces.value;
 
     return Scaffold(
       appBar: AppBar(
@@ -256,7 +256,10 @@ class _TravelChatPageState extends State<TravelChatPage> {
     );
   }
 
-  Widget _buildEntry(_ChatEntry entry, List<dynamic> surfaces) {
+  Widget _buildEntry(
+    _ChatEntry entry,
+    List<SurfaceModel<ComponentImplementation>> surfaces,
+  ) {
     return switch (entry) {
       _UserEntry e => _UserBubble(text: e.text),
       _AssistantTextEntry e => e.isStreaming
@@ -264,8 +267,9 @@ class _TravelChatPageState extends State<TravelChatPage> {
           : _AssistantBubble(text: e.text),
       _SurfaceEntry e when e.surfaceIndex < surfaces.length => Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Surface(
-            surfaceContext: _controller.contextFor(surfaces[e.surfaceIndex]),
+          child: A2uiSurface(
+            key: ObjectKey(surfaces[e.surfaceIndex]),
+            surface: surfaces[e.surfaceIndex],
           ),
         ),
       _ => const SizedBox.shrink(),

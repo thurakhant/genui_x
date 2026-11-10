@@ -18,10 +18,12 @@
 
 import 'dart:async';
 
+import 'package:a2ui_flutter/a2ui_flutter.dart';
 import 'package:flutter/material.dart';
-import 'package:genui/genui.dart';
 import 'package:genui_x/genui_x.dart';
 import 'package:json_schema_builder/json_schema_builder.dart';
+
+import 'src/surface_renderer.dart';
 
 void main() {
   runApp(const OllamaExampleApp());
@@ -52,8 +54,8 @@ class OllamaChatPage extends StatefulWidget {
 
 class _OllamaChatPageState extends State<OllamaChatPage> {
   late final GenuiXTransport _transport;
-  late final SurfaceController _controller;
-  late final Conversation _conversation;
+  late final SurfaceRenderer _renderer;
+  late final StreamSubscription<String> _textSubscription;
 
   final _textController = TextEditingController();
   bool _isWaiting = false;
@@ -75,48 +77,38 @@ class _OllamaChatPageState extends State<OllamaChatPage> {
 
     // ── Transport configuration for a local Ollama server ────────────────
     // No API key needed; Ollama's OpenAI-compat layer accepts any token.
-    // enforceJsonMode tightens A2UI compliance for local models that often
-    // forget to wrap output in JSON.
     _transport = GenuiXTransport.ollama(
       catalog: weatherCatalog,
       baseUrl: baseUrl,
       model: model,
-      enforceJsonMode: true,
       debug: true, // remove in production
     );
     // ─────────────────────────────────────────────────────────────────────
 
-    _controller = SurfaceController(catalogs: [weatherCatalog]);
-    _conversation = Conversation(
-      controller: _controller,
+    _renderer = SurfaceRenderer(
       transport: _transport,
+      catalogs: [weatherCatalog],
     );
 
-    _conversation.events.listen((event) {
-      if (event is ConversationContentReceived) {
-        setState(() {
-          _assistantText = event.text;
-          _errorText = null;
-          _isWaiting = false;
-        });
-      } else if (event is ConversationWaiting) {
-        setState(() => _isWaiting = true);
-      } else if (event is ConversationError) {
-        setState(() {
-          _isWaiting = false;
-          _errorText = event.error.toString();
-        });
-      } else if (event is ConversationSurfaceAdded ||
-          event is ConversationComponentsUpdated) {
-        setState(() => _isWaiting = false);
-      }
+    _textSubscription = _transport.incomingText.listen((text) {
+      setState(() {
+        _assistantText = text;
+        _errorText = null;
+        _isWaiting = false;
+      });
     });
+    _renderer.surfaces.addListener(_onSurfacesChanged);
+  }
+
+  void _onSurfacesChanged() {
+    setState(() => _isWaiting = false);
   }
 
   @override
   void dispose() {
-    _conversation.dispose();
-    _controller.dispose();
+    _renderer.surfaces.removeListener(_onSurfacesChanged);
+    unawaited(_textSubscription.cancel());
+    _renderer.dispose();
     _transport.dispose();
     _textController.dispose();
     super.dispose();
@@ -132,12 +124,20 @@ class _OllamaChatPageState extends State<OllamaChatPage> {
     });
     _textController.clear();
 
-    await _conversation.sendRequest(ChatMessage.user(text));
+    try {
+      await _transport.sendRequest(text);
+    } on Exception catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isWaiting = false;
+        _errorText = error.toString();
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = _conversation.state.value.surfaces;
+    final surfaces = _renderer.surfaces.value;
 
     return Scaffold(
       appBar: AppBar(
@@ -152,8 +152,9 @@ class _OllamaChatPageState extends State<OllamaChatPage> {
               child: ListView.builder(
                 itemCount: surfaces.length,
                 itemBuilder: (context, index) {
-                  return Surface(
-                    surfaceContext: _controller.contextFor(surfaces[index]),
+                  return A2uiSurface(
+                    key: ObjectKey(surfaces[index]),
+                    surface: surfaces[index],
                   );
                 },
               ),
@@ -246,11 +247,11 @@ class WeatherWidget extends StatelessWidget {
   }
 }
 
-final weatherCatalog = Catalog(
-  [
-    CatalogItem(
+final weatherCatalog = CatalogImplementation(
+  components: [
+    ComponentImplementation(
       name: 'WeatherWidget',
-      dataSchema: S.object(
+      schema: S.object(
         description: 'Displays current weather information for a city.',
         properties: {
           'city': S.string(description: 'The city name.'),
@@ -261,19 +262,16 @@ final weatherCatalog = Catalog(
         },
         required: ['city', 'temperature', 'condition'],
       ),
-      widgetBuilder: (ctx) {
-        final data = ctx.data as Map<String, dynamic>;
+      builder: (context, node, props, buildChild) {
         return WeatherWidget(
-          city: data['city'] as String,
-          temperature: (data['temperature'] as num).toDouble(),
-          condition: data['condition'] as String,
+          city: props.string('city') ?? '',
+          temperature: props.number('temperature') ?? 0,
+          condition: props.string('condition') ?? '',
         );
       },
     ),
   ],
-  catalogId: 'ollama.example.catalog',
-  systemPromptFragments: [
-    'When the user asks about weather, use the WeatherWidget component '
-        'to display the information visually.',
-  ],
+  id: 'ollama.example.catalog',
+  instructions: 'When the user asks about weather, use the WeatherWidget '
+      'component to display the information visually.',
 );

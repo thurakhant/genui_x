@@ -10,14 +10,14 @@
 // never receives the A2UI catalog instructions. Substring assertions miss
 // that class of bug; structural assertions catch it.
 //
-// The catalog instruction marker `createSurface` is emitted by
-// `PromptBuilder.chat` even for an empty catalog, so we use it to prove the
-// system prompt reached the field the provider actually reads.
+// The catalog instruction marker `createSurface` is emitted by the A2UI
+// prompt even for an empty catalog, so we use it to prove the system prompt
+// reached the field the provider actually reads.
 
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:genui/genui.dart';
+import 'package:a2ui_core/a2ui_core.dart';
 import 'package:genui_x/genui_x.dart';
 import 'package:http/http.dart' as http;
 
@@ -35,7 +35,7 @@ class _CapturingHttpClient extends http.BaseClient {
   }
 }
 
-final _catalog = Catalog([], catalogId: 'test.catalog');
+final _catalog = CatalogApi(id: 'test.catalog', components: []);
 
 /// Sends one user message through [transport] and returns the decoded JSON
 /// body the transport tried to POST.
@@ -45,7 +45,7 @@ Future<Map<String, dynamic>> _capturedBody(
   final client = _CapturingHttpClient();
   final t = build(client);
   await expectLater(
-    t.sendRequest(ChatMessage.user('hello world')),
+    t.sendRequest('hello world'),
     throwsA(isA<GenuiXAuthError>()),
   );
   t.dispose();

@@ -1,3 +1,30 @@
+## Unreleased
+
+* **Breaking:** move from `genui` to the A2UI Dart SDKs, since `genui` will
+  be deprecated. genui_x now depends on `a2ui_core` and `a2ui_agent` instead
+  of `genui`, and renders with `a2ui_flutter`.
+  * `GenuiXTransport` no longer implements genui's `Transport`. It keeps
+    `incomingText`, `incomingMessages`, `sendRequest`, `isLoading`, `cancel`,
+    `clearHistory` and `dispose`.
+  * `catalog` takes an `a2ui_core` `CatalogApi`, such as an `a2ui_flutter`
+    `CatalogImplementation`, instead of a genui `Catalog`.
+  * `sendRequest` takes the user's text as a `String` instead of a
+    `ChatMessage`.
+  * `incomingMessages` emits `a2ui_core` `AgentToRendererMessage`s. Pass each
+    one to a `MessageProcessor` with
+    `processMessages(AgentToRendererMessagePayload.of(message))`. A block the
+    model wrote that cannot be read or is rejected arrives as an error, and
+    the rest of the reply is still read.
+  * The system prompt comes from `a2ui_agent`, and asks for A2UI JSON in
+    `<a2ui-json>` blocks instead of markdown fences.
+  * `SurfaceOperations` is now part of genui_x, with the same constructors.
+    With `update` or `delete` enabled, each reply is checked against the
+    surfaces of earlier turns.
+  * The `PromptFragments` re-export is removed.
+* Update the example app to `a2ui_flutter`'s `MessageProcessor` and
+  `A2uiSurface`, and stop pinning OpenAI and Ollama replies to a JSON object,
+  which cannot hold the `<a2ui-json>` blocks the prompt asks for.
+
 ## 0.1.0
 
 * **First minor release.** No breaking API changes from 0.0.14 — the version

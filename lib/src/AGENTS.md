@@ -4,14 +4,15 @@
 # lib/src/
 
 ## Purpose
-Internal implementation of the `genui_x` package. Contains the HTTP transport layer, configuration model, and three SSE stream parsers (Anthropic Messages API, OpenAI Chat Completions, and Google Gemini `streamGenerateContent`). Nothing here is exported directly; all public symbols flow through `lib/genui_x.dart`.
+Internal implementation of the `genui_x` package. Contains the HTTP transport layer, configuration model, surface operations, and three SSE stream parsers (Anthropic Messages API, OpenAI Chat Completions, and Google Gemini `streamGenerateContent`). Nothing here is exported directly; all public symbols flow through `lib/genui_x.dart`.
 
 ## Key Files
 
 | File | Description |
 |------|-------------|
 | `genui_x_config.dart` | Immutable `GenuiXConfig` value object — holds API key, model, base URL, endpoint path, token limit, auth header names, stream format, retry policy, JSON-mode toggle, surface operations, and client data model |
-| `genui_x_transport.dart` | Main `Transport` implementation (`GenuiXTransport`). Manages conversation history, builds the system prompt via `PromptBuilder`, builds provider-specific request URI/payload via `_buildUri()` / `_buildPayload()`, streams chunks from the configured backend, and pipes them to `A2uiTransportAdapter`. Exposes `.openai()`, `.anthropic()`, `.gemini()`, and `.ollama()` factory constructors (the last is a thin wrapper around `.openai()` for local Ollama servers) |
+| `surface_operations.dart` | `SurfaceOperations` — which A2UI messages the model may write, and whether replies may change the surfaces of earlier turns |
+| `genui_x_transport.dart` | Main transport (`GenuiXTransport`). Manages conversation history, builds the system prompt with `a2ui_agent`'s `A2uiRequestProcessor`, builds provider-specific request URI/payload via `_buildUri()` / `_buildPayload()`, streams chunks from the configured backend, and parses them with the processor's `ContinuingResponseStream` into `incomingText` and `incomingMessages`. Exposes `.openai()`, `.anthropic()`, `.gemini()`, and `.ollama()` factory constructors (the last is a thin wrapper around `.openai()` for local Ollama servers) |
 | `anthropic_sse_parser.dart` | `AnthropicSseParser` — parses Anthropic Messages API SSE stream (`content_block_delta` / `text_delta` events) |
 | `openai_sse_parser.dart` | `OpenAiSseParser` — parses OpenAI chat-completions SSE stream (`choices[0].delta.content`) |
 | `gemini_sse_parser.dart` | `GeminiSseParser` — parses Gemini `streamGenerateContent?alt=sse` stream (`candidates[*].content.parts[*].text`) |
@@ -55,7 +56,8 @@ Internal implementation of the `genui_x` package. Contains the HTTP transport la
 - `anthropic_sse_parser.dart`, `openai_sse_parser.dart`, and `gemini_sse_parser.dart` ← used by `genui_x_transport.dart`
 
 ### External
-- `genui` (^0.9.2) — `Transport`, `A2uiTransportAdapter`, `PromptBuilder`, `Catalog`, `ChatMessage`, `SurfaceOperations`
+- `a2ui_agent` (^0.2.0) — `A2uiGenerator`, `A2uiRequestProcessor`, `DirectJsonFormatFactory`, `ContinuingResponseStream`, `RendererState`
+- `a2ui_core` (^0.6.0) — `CatalogApi`, `AgentToRendererMessage`, `A2uiRendererCapabilities`, `A2uiError`
 - `http` (^1.6.0) — `http.Client`, `http.Request`, `http.StreamedResponse`
 
 <!-- MANUAL: -->

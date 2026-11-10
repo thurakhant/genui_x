@@ -3,10 +3,12 @@
 
 import 'dart:async';
 
+import 'package:a2ui_flutter/a2ui_flutter.dart';
 import 'package:flutter/material.dart';
-import 'package:genui/genui.dart';
 import 'package:genui_x/genui_x.dart';
 import 'package:json_schema_builder/json_schema_builder.dart';
+
+import 'src/surface_renderer.dart';
 
 void main() {
   const apiKey = String.fromEnvironment('CLAUDE_API_KEY');
@@ -50,8 +52,8 @@ class MinimalChatPage extends StatefulWidget {
 
 class _MinimalChatPageState extends State<MinimalChatPage> {
   late final GenuiXTransport _transport;
-  late final SurfaceController _controller;
-  late final Conversation _conversation;
+  late final SurfaceRenderer _renderer;
+  late final StreamSubscription<String> _textSubscription;
 
   bool _isWaiting = false;
   String _assistantText = '';
@@ -67,39 +69,32 @@ class _MinimalChatPageState extends State<MinimalChatPage> {
       catalog: weatherCatalog,
       model: 'claude-sonnet-4-6',
     );
-    _controller = SurfaceController(catalogs: [weatherCatalog]);
-    _conversation = Conversation(
-      controller: _controller,
+    _renderer = SurfaceRenderer(
       transport: _transport,
+      catalogs: [weatherCatalog],
     );
 
-    _conversation.events.listen((event) {
-      if (event is ConversationContentReceived) {
-        setState(() {
-          _assistantText = event.text;
-          _errorText = null;
-          _isWaiting = false;
-        });
-        _startTypingAnimation(event.text);
-      } else if (event is ConversationWaiting) {
-        setState(() => _isWaiting = true);
-      } else if (event is ConversationError) {
-        setState(() {
-          _isWaiting = false;
-          _errorText = event.error.toString();
-        });
-      } else if (event is ConversationSurfaceAdded ||
-          event is ConversationComponentsUpdated) {
-        setState(() => _isWaiting = false);
-      }
+    _textSubscription = _transport.incomingText.listen((text) {
+      setState(() {
+        _assistantText = text;
+        _errorText = null;
+        _isWaiting = false;
+      });
+      _startTypingAnimation(text);
     });
+    _renderer.surfaces.addListener(_onSurfacesChanged);
+  }
+
+  void _onSurfacesChanged() {
+    setState(() => _isWaiting = false);
   }
 
   @override
   void dispose() {
     _typingTimer?.cancel();
-    _conversation.dispose();
-    _controller.dispose();
+    _renderer.surfaces.removeListener(_onSurfacesChanged);
+    unawaited(_textSubscription.cancel());
+    _renderer.dispose();
     _transport.dispose();
     super.dispose();
   }
@@ -141,14 +136,20 @@ class _MinimalChatPageState extends State<MinimalChatPage> {
       _errorText = null;
     });
 
-    await _conversation.sendRequest(
-      ChatMessage.user('Use WeatherWidget for Tokyo, 26C, Sunny.'),
-    );
+    try {
+      await _transport.sendRequest('Use WeatherWidget for Tokyo, 26C, Sunny.');
+    } on Exception catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isWaiting = false;
+        _errorText = error.toString();
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final surfaces = _conversation.state.value.surfaces;
+    final surfaces = _renderer.surfaces.value;
 
     return Scaffold(
       appBar: AppBar(
@@ -193,8 +194,9 @@ class _MinimalChatPageState extends State<MinimalChatPage> {
                 child: ListView.builder(
                   itemCount: surfaces.length,
                   itemBuilder: (context, index) {
-                    return Surface(
-                      surfaceContext: _controller.contextFor(surfaces[index]),
+                    return A2uiSurface(
+                      key: ObjectKey(surfaces[index]),
+                      surface: surfaces[index],
                     );
                   },
                 ),
@@ -244,9 +246,9 @@ class WeatherWidget extends StatelessWidget {
   }
 }
 
-final weatherCatalogItem = CatalogItem(
+final weatherCatalogItem = ComponentImplementation(
   name: 'WeatherWidget',
-  dataSchema: S.object(
+  schema: S.object(
     description: 'Displays current weather information for a city.',
     properties: {
       'city': S.string(description: 'The city name.'),
@@ -257,21 +259,18 @@ final weatherCatalogItem = CatalogItem(
     },
     required: ['city', 'temperature', 'condition'],
   ),
-  widgetBuilder: (ctx) {
-    final data = ctx.data as Map<String, dynamic>;
+  builder: (context, node, props, buildChild) {
     return WeatherWidget(
-      city: data['city'] as String,
-      temperature: (data['temperature'] as num).toDouble(),
-      condition: data['condition'] as String,
+      city: props.string('city') ?? '',
+      temperature: props.number('temperature') ?? 0,
+      condition: props.string('condition') ?? '',
     );
   },
 );
 
-final weatherCatalog = Catalog(
-  [weatherCatalogItem],
-  catalogId: 'default',
-  systemPromptFragments: [
-    'For weather questions, respond ONLY with an A2UI JSON block that '
-        'calls WeatherWidget. Do not include any plain text.',
-  ],
+final weatherCatalog = CatalogImplementation(
+  id: 'default',
+  components: [weatherCatalogItem],
+  instructions: 'For weather questions, respond ONLY with an A2UI JSON block '
+      'that calls WeatherWidget. Do not include any plain text.',
 );

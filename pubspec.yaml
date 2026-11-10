@@ -1,5 +1,5 @@
 name: genui_x
-description: "Connect any LLM — Claude, OpenAI, Gemini, Ollama, or a custom proxy — to Google's genui (Generative UI) framework with one Transport."
+description: "Connect any LLM — Claude, OpenAI, Gemini, Ollama, or a custom proxy — to A2UI (Agent-to-User Interface) generative UI in Flutter with one transport."
 version: 0.1.0
 repository: https://github.com/thurakhant/genui_x
 issue_tracker: https://github.com/thurakhant/genui_x/issues
@@ -10,7 +10,7 @@ documentation: https://pub.dev/documentation/genui_x/latest/
 # generative-UI niche. `flutter` is implied by the SDK constraint, so we use
 # the slot for a provider keyword instead.
 topics:
-  - genui
+  - a2ui
   - llm
   - claude
   - gemini
@@ -32,15 +32,15 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  # genui 0.10.0 stopped re-exporting A2uiMessage; it now lives in a2ui_core.
-  a2ui_core: ^0.0.1-dev002
-  genui: ^0.10.0
+  a2ui_agent: ^0.2.0
+  a2ui_core: ^0.6.0
   http: ^1.6.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  json_schema_builder: ^0.1.7
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

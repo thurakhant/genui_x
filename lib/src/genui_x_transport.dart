@@ -4,15 +4,16 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:a2ui_core/a2ui_core.dart' show A2uiMessage;
+import 'package:a2ui_agent/a2ui_agent.dart';
+import 'package:a2ui_core/a2ui_core.dart';
 import 'package:flutter/foundation.dart';
-import 'package:genui/genui.dart';
 import 'package:http/http.dart' as http;
 
 import 'anthropic_sse_parser.dart';
 import 'gemini_sse_parser.dart';
 import 'genui_x_config.dart';
 import 'openai_sse_parser.dart';
+import 'surface_operations.dart';
 
 /// The wire-format identity of a backend: the HTTP routing details that
 /// distinguish one provider's contract from another.
@@ -71,11 +72,13 @@ const _geminiProfile = _ProviderProfile(
   streamFormat: GenuiXStreamFormat.gemini,
 );
 
-/// A [Transport] implementation that connects any AI backend to genui.
+/// Connects any AI backend to an A2UI renderer.
 ///
 /// Works with Anthropic Claude, OpenAI-compatible APIs, and any custom proxy.
-/// Sends the A2UI widget schema as a system prompt and streams the response
-/// back through genui's rendering pipeline.
+/// Sends the A2UI widget schema as a system prompt, streams the response, and
+/// splits it into text ([incomingText]) and A2UI messages
+/// ([incomingMessages]) for a renderer such as `package:a2ui_flutter`'s
+/// `MessageProcessor`.
 ///
 /// ## Basic usage (Claude)
 ///
@@ -99,7 +102,7 @@ const _geminiProfile = _ProviderProfile(
 ///   streamFormat: GenuiXStreamFormat.openai,
 /// );
 /// ```
-class GenuiXTransport implements Transport {
+class GenuiXTransport {
   /// Creates a [GenuiXTransport].
   ///
   /// ### Required
@@ -125,9 +128,8 @@ class GenuiXTransport implements Transport {
   /// - [systemPromptFragments] — extra instructions injected into the system
   ///   prompt before the catalog schema (persona, date, domain restrictions).
   /// - [surfaceOperations] — controls which A2UI operations the AI may use
-  ///   (create, update, delete surfaces). Defaults to create-only via
-  ///   [PromptBuilder.chat]. Pass a [SurfaceOperations] value to use
-  ///   [PromptBuilder.custom] instead.
+  ///   (create, update, delete surfaces). Defaults to
+  ///   `SurfaceOperations.createOnly(dataModel: false)`.
   /// - [clientDataModel] — optional app-state snapshot injected into the
   ///   system prompt so the AI has context about the current user or session.
   /// - [requestBodyOverrides] — raw JSON fields merged into the request body,
@@ -145,7 +147,7 @@ class GenuiXTransport implements Transport {
   /// - [httpClient] — override the HTTP client (useful for testing).
   GenuiXTransport({
     required String apiKey,
-    required Catalog catalog,
+    required CatalogApi catalog,
     String? model,
     String? baseUrl,
     String endpointPath = '/v1/messages',
@@ -183,8 +185,7 @@ class GenuiXTransport implements Transport {
          enforceJsonMode: enforceJsonMode,
        ),
        _catalog = catalog,
-       _httpClient = httpClient ?? http.Client(),
-       _adapter = A2uiTransportAdapter();
+       _httpClient = httpClient ?? http.Client();
 
   /// Creates a [GenuiXTransport] pre-configured for OpenAI-compatible backends.
   ///
@@ -211,7 +212,7 @@ class GenuiXTransport implements Transport {
   /// ```
   factory GenuiXTransport.openai({
     required String apiKey,
-    required Catalog catalog,
+    required CatalogApi catalog,
     String model = 'gpt-4o-mini',
     String baseUrl = 'https://api.openai.com',
     int maxTokens = 8192,
@@ -272,7 +273,7 @@ class GenuiXTransport implements Transport {
   /// ```
   factory GenuiXTransport.anthropic({
     required String apiKey,
-    required Catalog catalog,
+    required CatalogApi catalog,
     String model = 'claude-haiku-4-5-20251001',
     String baseUrl = 'https://api.anthropic.com',
     int maxTokens = 8192,
@@ -324,13 +325,8 @@ class GenuiXTransport implements Transport {
   ///   // baseUrl: 'http://localhost:11434',    // optional — default
   /// );
   /// ```
-  ///
-  /// Local models are often inconsistent at emitting strict A2UI JSON. If
-  /// the server you point at supports OpenAI's `response_format`, set
-  /// [enforceJsonMode] to `true` for tighter compliance — Ollama does honour
-  /// `response_format: {type: "json_object"}` for models that support tools.
   factory GenuiXTransport.ollama({
-    required Catalog catalog,
+    required CatalogApi catalog,
     String model = 'llama3.2',
     String baseUrl = 'http://localhost:11434',
     String apiKey = 'ollama',
@@ -391,7 +387,7 @@ class GenuiXTransport implements Transport {
   /// ```
   factory GenuiXTransport.gemini({
     required String apiKey,
-    required Catalog catalog,
+    required CatalogApi catalog,
     String model = 'gemini-2.5-flash',
     String baseUrl = 'https://generativelanguage.googleapis.com',
     int maxTokens = 8192,
@@ -428,9 +424,8 @@ class GenuiXTransport implements Transport {
   }
 
   final GenuiXConfig _config;
-  final Catalog _catalog;
+  final CatalogApi _catalog;
   final http.Client _httpClient;
-  final A2uiTransportAdapter _adapter;
   final _anthropicSseParser = AnthropicSseParser();
   final _openaiSseParser = OpenAiSseParser();
   final _geminiSseParser = GeminiSseParser();
@@ -445,35 +440,66 @@ class GenuiXTransport implements Transport {
 
   StreamSubscription<String>? _currentStream;
 
+  final StreamController<String> _text = StreamController.broadcast();
+  final StreamController<AgentToRendererMessage> _messages =
+      StreamController.broadcast();
+
+  late final SurfaceOperations _operations =
+      _config.surfaceOperations ??
+      SurfaceOperations.createOnly(dataModel: false);
+
+  // Prompts the model for the catalog and parses its replies, in the A2UI
+  // protocol version the catalog targets.
+  late final A2uiRequestProcessor _agent =
+      A2uiGenerator(
+        catalogs: [CatalogConfig(_catalog)],
+        inferenceFormatFactory: DirectJsonFormatFactory(
+          allowedMessages: _operations.allowedMessages,
+          bufferIncompleteComponents: true,
+        ),
+      ).createProcessor(
+        A2uiRendererCapabilities.forCatalogIds([
+          _catalog.id,
+        ], version: _catalog.protocolVersion ?? A2uiProtocolVersion.v0_9),
+      );
+
+  // The surfaces of earlier turns, which replies are checked against when
+  // the model may update or delete them. Null when each reply creates new
+  // surfaces, so each reply is checked on its own.
+  late RendererState? _surfaces = _newSurfaces();
+
+  RendererState? _newSurfaces() =>
+      _operations.keepsSurfaces ? _agent.createState() : null;
+
   // Cached system prompt (built once from catalog + user fragments)
-  late final String _systemPrompt =
-      (_config.surfaceOperations != null
-              ? PromptBuilder.custom(
-                  catalog: _catalog,
-                  allowedOperations: _config.surfaceOperations!,
-                  systemPromptFragments: _config.systemPromptFragments,
-                  clientDataModel: _config.clientDataModel,
-                )
-              : PromptBuilder.chat(
-                  catalog: _catalog,
-                  systemPromptFragments: _config.systemPromptFragments,
-                  clientDataModel: _config.clientDataModel,
-                ))
-          .systemPromptJoined();
+  late final String _systemPrompt = [
+    ..._config.systemPromptFragments,
+    if (!_operations.keepsSurfaces)
+      'IMPORTANT: DO NOT update or modify surfaces created in previous turns. '
+          'If the UI needs to change, you MUST create a NEW surface with a new '
+          'unique `surfaceId`. You may only use `updateComponents` to populate '
+          'the components of a freshly created surface.',
+    _agent.promptSnippet,
+    if (_config.clientDataModel case final dataModel?)
+      'Client Data Model:\n'
+          '${const JsonEncoder.withIndent('  ').convert(dataModel)}',
+  ].map((fragment) => fragment.trim()).join('\n\n');
 
   /// Stream of parsed A2UI messages from the AI response.
   ///
   /// Use this to react to structured UI commands such as `createSurface`
-  /// or `updateComponents`. For raw text, use [incomingText].
-  @override
-  Stream<A2uiMessage> get incomingMessages => _adapter.incomingMessages;
-
-  /// Stream of raw text chunks from the AI response.
+  /// or `updateComponents`, for example by passing each message to an
+  /// `a2ui_core` `MessageProcessor`. For raw text, use [incomingText].
   ///
-  /// Emits each chunk as it arrives from the streaming API.
-  /// A2UI JSON blocks are included in this stream before being parsed.
-  @override
-  Stream<String> get incomingText => _adapter.incomingText;
+  /// Each message has been checked against the catalog. An A2UI block the
+  /// model wrote that cannot be read or is rejected is added to this stream
+  /// as an [A2uiError], and the rest of the reply is still read.
+  Stream<AgentToRendererMessage> get incomingMessages => _messages.stream;
+
+  /// Stream of text chunks from the AI response.
+  ///
+  /// Emits the text outside A2UI blocks as it arrives from the streaming API.
+  Stream<String> get incomingText => _text.stream;
 
   /// Cancels any in-flight request.
   ///
@@ -487,18 +513,21 @@ class GenuiXTransport implements Transport {
   /// Clears the conversation history.
   ///
   /// Call this to start a fresh conversation without creating a new transport.
-  void clearHistory() => _history.clear();
+  void clearHistory() {
+    _history.clear();
+    _surfaces?.dispose();
+    _surfaces = _newSurfaces();
+  }
 
   /// Sends a message to the AI backend and streams the response.
   ///
-  /// Adds [message] to the conversation history, streams the response
-  /// through [incomingText] and [incomingMessages], then appends the
-  /// assistant reply to history for multi-turn context.
+  /// Adds [message], the user's text, to the conversation history, streams
+  /// the response through [incomingText] and [incomingMessages], then appends
+  /// the assistant reply to history for multi-turn context.
   ///
   /// Throws [GenuiXAuthError] on 401/403. Other API errors are surfaced
   /// as a text chunk rather than thrown, so the conversation continues.
-  @override
-  Future<void> sendRequest(ChatMessage message) async {
+  Future<void> sendRequest(String message) async {
     final outbound = _toMessage(message);
     final content = outbound['content'] as String;
     if (content.isEmpty) {
@@ -545,27 +574,53 @@ class GenuiXTransport implements Transport {
   Future<String> _collectStream() async {
     final buffer = StringBuffer();
     final completer = Completer<void>();
+    final ContinuingResponseStream reply = _agent.openContinuingStream(
+      state: _surfaces,
+    );
+    var replyEnded = false;
+
+    // Delivers the text and A2UI messages that [read] gets from the reply.
+    // The reply reads past a block it rejects and returns an error part for
+    // it; anything [read] throws ends the reply. Both go to
+    // [incomingMessages] as errors.
+    void readReply(List<StreamPart> Function() read) {
+      if (replyEnded) return;
+      try {
+        read().forEach(_deliver);
+      } on Object catch (error, stackTrace) {
+        replyEnded = true;
+        if (error is A2uiError) error.partialResults.forEach(_deliver);
+        _messages.addError(error, stackTrace);
+      }
+    }
+
+    void endReply() {
+      readReply(reply.close);
+      replyEnded = true;
+    }
 
     _currentStream = _streamLlm().listen(
       (chunk) {
-        _adapter.addChunk(chunk);
+        readReply(() => reply.feed(chunk));
         buffer.write(chunk);
       },
       onError: (Object e, StackTrace st) {
+        endReply();
         if (e is GenuiXAuthError || e is GenuiXRateLimitError) {
           completer.completeError(e, st);
         } else if (e is GenuiXApiError) {
           final status = e.statusCode > 0 ? ' (HTTP ${e.statusCode})' : '';
-          _adapter.addChunk(
+          _text.add(
             '\n\nSorry, I encountered an API error$status. Please try again.',
           );
           completer.complete();
         } else {
-          _adapter.addChunk('\n\nSorry, I encountered an unexpected error.');
+          _text.add('\n\nSorry, I encountered an unexpected error.');
           completer.complete();
         }
       },
       onDone: () {
+        endReply();
         if (!completer.isCompleted) completer.complete();
       },
       cancelOnError: true,
@@ -574,6 +629,17 @@ class GenuiXTransport implements Transport {
     await completer.future;
     _currentStream = null;
     return buffer.toString();
+  }
+
+  void _deliver(StreamPart part) {
+    switch (part) {
+      case TextPart(:final text):
+        _text.add(text);
+      case A2uiPart(:final a2ui):
+        a2ui.forEach(_messages.add);
+      case ErrorPart(:final error):
+        _messages.addError(error);
+    }
   }
 
   /// Streams text chunks from the configured AI backend.
@@ -755,14 +821,13 @@ class GenuiXTransport implements Transport {
     }
   }
 
-  /// Converts a [ChatMessage] to the `{role, content}` shape used by both
-  /// the Anthropic Messages API and OpenAI Chat Completions API.
+  /// Converts the user's [message] to the `{role, content}` shape used by
+  /// both the Anthropic Messages API and OpenAI Chat Completions API.
   ///
   /// The Gemini path converts these entries to its own `contents` shape via
   /// [_toGeminiContent] at request time.
-  Map<String, dynamic> _toMessage(ChatMessage message) {
-    final role = message.role == ChatMessageRole.model ? 'assistant' : 'user';
-    return {'role': role, 'content': message.text.trim()};
+  Map<String, dynamic> _toMessage(String message) {
+    return {'role': 'user', 'content': message.trim()};
   }
 
   /// Converts a stored history entry (`{role, content}`) into Gemini's
@@ -779,10 +844,12 @@ class GenuiXTransport implements Transport {
     };
   }
 
-  @override
+  /// Cancels any in-flight request and releases the transport's resources.
   void dispose() {
     _currentStream?.cancel();
-    _adapter.dispose();
+    _text.close();
+    _messages.close();
+    _surfaces?.dispose();
     _httpClient.close();
     isLoading.dispose();
   }

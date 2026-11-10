@@ -115,17 +115,34 @@ void main() {
     });
   });
 
-  group('re-exports', () {
-    test('PromptFragments.currentDate is accessible from genui_x', () {
-      // If this compiles, the re-export works.
-      final fragment = PromptFragments.currentDate();
-      expect(fragment, contains('Current Date'));
-    });
-
-    test('SurfaceOperations is accessible from genui_x', () {
+  group('SurfaceOperations', () {
+    test('is accessible from genui_x', () {
       final ops = SurfaceOperations.all(dataModel: true);
       expect(ops.create, isTrue);
       expect(ops.delete, isTrue);
+    });
+
+    test('createOnly allows the messages that build a new surface', () {
+      final ops = SurfaceOperations.createOnly(dataModel: false);
+      expect(ops.allowedMessages, ['createSurface', 'updateComponents']);
+      expect(ops.keepsSurfaces, isFalse);
+    });
+
+    test('all allows every message and keeps earlier surfaces', () {
+      final ops = SurfaceOperations.all(dataModel: true);
+      expect(ops.allowedMessages, [
+        'createSurface',
+        'updateComponents',
+        'updateDataModel',
+        'deleteSurface',
+      ]);
+      expect(ops.keepsSurfaces, isTrue);
+    });
+
+    test('updateOnly allows updates without creating surfaces', () {
+      final ops = SurfaceOperations.updateOnly(dataModel: false);
+      expect(ops.allowedMessages, ['updateComponents']);
+      expect(ops.keepsSurfaces, isTrue);
     });
   });
 

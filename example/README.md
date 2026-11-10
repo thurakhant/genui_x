@@ -67,4 +67,4 @@ flutter run -t lib/ollama_main.dart \
 ```
 
 Uses `GenuiXTransport.ollama()` against Ollama's OpenAI-compatible
-endpoint with `enforceJsonMode: true` for stricter A2UI output.
+endpoint.

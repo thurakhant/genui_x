@@ -10,8 +10,8 @@ Unit tests for the `genui_x` library. Covers `GenuiXConfig` defaults and custom 
 
 | File | Description |
 |------|-------------|
-| `genui_x_test.dart` | Tests for `GenuiXConfig` defaults, custom values, surface operations, client data model, JSON-mode toggle, and re-exports |
-| `genui_x_transport_test.dart` | HTTP-level transport tests using `_MockHttpClient` and `_CapturingHttpClient`. Covers `.openai()`, `.anthropic()`, `.gemini()` factories, retry-on-429, `enforceJsonMode`, surface operations, and the debug flag |
+| `genui_x_test.dart` | Tests for `GenuiXConfig` defaults, custom values, surface operations, client data model, and JSON-mode toggle |
+| `genui_x_transport_test.dart` | HTTP-level transport tests using `_MockHttpClient` and `_CapturingHttpClient`. Covers `.openai()`, `.anthropic()`, `.gemini()` factories, retry-on-429, A2UI message parsing, `enforceJsonMode`, surface operations, and the debug flag |
 | `anthropic_sse_parser_test.dart` | Tests for `AnthropicSseParser` — feeds raw SSE bytes and asserts extracted `text_delta` content |
 | `openai_sse_parser_test.dart` | Tests for `OpenAiSseParser` — feeds OpenAI-format SSE bytes and asserts extracted `delta.content` |
 | `gemini_sse_parser_test.dart` | Tests for `GeminiSseParser` — feeds Gemini-format SSE bytes and asserts extracted `parts[*].text` |

@@ -1,6 +1,6 @@
 # AGENTS.md — genui_x
 
-Multi-provider `Transport` adapter (Anthropic, OpenAI, Gemini, Ollama) for Google's [genui](https://pub.dev/packages/genui) framework. Written in Dart/Flutter.
+Multi-provider transport (Anthropic, OpenAI, Gemini, Ollama) for [A2UI](https://a2ui.org/) generative UI: it prompts the model through `a2ui_agent` and streams its text and A2UI messages to an `a2ui_flutter` renderer. Written in Dart/Flutter.
 
 ## Commands
 
@@ -29,10 +29,10 @@ cd example && flutter pub get && flutter analyze && flutter test
 
 ## Critical A2UI protocol rules
 
-1. **`createSurface` before `updateComponents`** — `SurfaceController` buffers components for unknown surfaces; if `createSurface` never arrives, nothing renders. `PromptBuilder.chat` already instructs this; never override it.
-2. **`"id"` required on every component** — `Component.fromJson` hard-casts `json['id'] as String`. Missing `id` → crash.
+1. **`createSurface` before `updateComponents`** — an update for a surface that does not exist yet is rejected. The A2UI prompt from `a2ui_agent` already instructs this; never override it.
+2. **`"id"` required on every component** — a component without one is rejected.
 3. **One component must have `"id": "root"`** — without it nothing renders.
-4. **Custom catalog widgets use `"data"` wrapper** — props are nested under `"data"` key, accessed via `ctx.data` in `widgetBuilder`.
+4. **Component properties go flat** next to `"id"` and `"component"`, and are read through `props` in a `ComponentImplementation` builder. A rejected block reaches `incomingMessages` as an error.
 
 ## License header
 
@@ -48,7 +48,7 @@ Every `.dart` source file must include:
 - **Adding a new stream format** touches 5 files: `<vendor>_sse_parser.dart`, `GenuiXStreamFormat` variant (in `genui_x_config.dart`), parser field + `switch` in `_streamLlm()`, vendor branch in `_buildUri()` / `_buildPayload()` and optionally a new factory. (See `lib/src/AGENTS.md`)
 - **Stream parsers** (`AnthropicSseParser`, `OpenAiSseParser`, `GeminiSseParser`) are stateless, share the same `_parseLines` pattern. Keep them symmetric.
 - **Gemini**: `{model}` in `endpointPath` is substituted at request time.
-- **Ollama**: `maxRetries: 0` by default (local servers don't rate-limit); placeholder bearer token `"ollama"` sent for OpenAI-compat layer; `enforceJsonMode` recommended for stricter A2UI.
+- **Ollama**: `maxRetries: 0` by default (local servers don't rate-limit); placeholder bearer token `"ollama"` sent for OpenAI-compat layer.
 
 ## Error handling
 

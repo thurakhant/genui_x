@@ -4,9 +4,11 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:genui/genui.dart';
+import 'package:a2ui_core/a2ui_core.dart';
 import 'package:genui_x/genui_x.dart';
 import 'package:http/http.dart' as http;
+import 'package:json_schema_builder/json_schema_builder.dart'
+    hide ValidationResult;
 
 // Captures the raw request body for inspection.
 class _CapturingHttpClient extends http.BaseClient {
@@ -34,8 +36,46 @@ class _MockHttpClient extends http.BaseClient {
 http.StreamedResponse _response(int status, String body) =>
     http.StreamedResponse(Stream.value(utf8.encode(body)), status);
 
-// Empty catalog is valid — no CatalogItems needed for HTTP-level tests.
-final _catalog = Catalog([], catalogId: 'test.catalog');
+// Empty catalog is valid — no components needed for HTTP-level tests.
+final _catalog = CatalogApi(id: 'test.catalog', components: []);
+
+final _weatherCatalog = CatalogApi(
+  id: 'test.weather',
+  components: [
+    ComponentApi(
+      name: 'WeatherWidget',
+      schema: Schema.object(
+        properties: {'city': Schema.string()},
+        required: ['city'],
+      ),
+    ),
+  ],
+);
+
+/// An Anthropic SSE response that streams [chunks] as text deltas.
+http.StreamedResponse _anthropicReply(List<String> chunks) =>
+    http.StreamedResponse(
+      Stream.fromIterable([
+        for (final chunk in chunks)
+          utf8.encode(
+            'event: content_block_delta\n'
+            'data: ${jsonEncode({
+              'type': 'content_block_delta',
+              'index': 0,
+              'delta': {'type': 'text_delta', 'text': chunk},
+            })}\n\n',
+          ),
+      ]),
+      200,
+    );
+
+const _createWeatherSurface =
+    '{"version":"v0.9","createSurface":'
+    '{"surfaceId":"s1","catalogId":"test.weather"}}';
+
+const _updateWeatherSurface =
+    '{"version":"v0.9","updateComponents":{"surfaceId":"s1","components":'
+    '[{"id":"root","component":"WeatherWidget","city":"Tokyo"}]}}';
 
 GenuiXTransport _transport({required http.Client httpClient}) =>
     GenuiXTransport(
@@ -54,7 +94,7 @@ void main() {
         ),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       t.dispose();
@@ -65,7 +105,7 @@ void main() {
         httpClient: _MockHttpClient((_) async => _response(403, 'Forbidden')),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       t.dispose();
@@ -77,7 +117,7 @@ void main() {
           (_) async => _response(500, 'Internal Server Error'),
         ),
       );
-      await expectLater(t.sendRequest(ChatMessage.user('hello')), completes);
+      await expectLater(t.sendRequest('hello'), completes);
       t.dispose();
     });
 
@@ -87,7 +127,7 @@ void main() {
           (_) async => throw Exception('Connection refused'),
         ),
       );
-      await expectLater(t.sendRequest(ChatMessage.user('hello')), completes);
+      await expectLater(t.sendRequest('hello'), completes);
       t.dispose();
     });
   });
@@ -100,7 +140,7 @@ void main() {
         ),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXRateLimitError>()),
       );
       t.dispose();
@@ -116,7 +156,7 @@ void main() {
           ),
         );
         try {
-          await t.sendRequest(ChatMessage.user('hello'));
+          await t.sendRequest('hello');
         } on GenuiXRateLimitError catch (e) {
           caught = e;
         }
@@ -140,7 +180,7 @@ void main() {
           }),
         );
         try {
-          await t.sendRequest(ChatMessage.user('hello'));
+          await t.sendRequest('hello');
         } on GenuiXRateLimitError catch (e) {
           caught = e;
         }
@@ -157,7 +197,7 @@ void main() {
         ),
       );
       try {
-        await t.sendRequest(ChatMessage.user('hello'));
+        await t.sendRequest('hello');
       } on GenuiXRateLimitError {
         // expected
       }
@@ -182,7 +222,7 @@ void main() {
 
       final chunks = <String>[];
       final sub = t.incomingText.listen(chunks.add);
-      await t.sendRequest(ChatMessage.user('hello'));
+      await t.sendRequest('hello');
       await sub.cancel();
 
       expect(chunks, contains('Hello'));
@@ -206,11 +246,118 @@ void main() {
 
       final chunks = <String>[];
       final sub = t.incomingText.listen(chunks.add);
-      await t.sendRequest(ChatMessage.user('hello'));
+      await t.sendRequest('hello');
       await sub.cancel();
 
       expect(chunks, contains('Hi'));
       t.dispose();
+    });
+  });
+
+  group('GenuiXTransport — A2UI messages', () {
+    test('emits the A2UI messages and the text of a streamed reply', () async {
+      final t = GenuiXTransport(
+        apiKey: 'test-key',
+        catalog: _weatherCatalog,
+        httpClient: _MockHttpClient(
+          (_) async => _anthropicReply([
+            'Here is the weather. <a2ui-json>[$_createWeatherSurface,',
+            '$_updateWeatherSurface]</a2ui-',
+            'json> Enjoy!',
+          ]),
+        ),
+      );
+
+      final messages = <AgentToRendererMessage>[];
+      final errors = <Object>[];
+      final text = <String>[];
+      final messageSub = t.incomingMessages.listen(
+        messages.add,
+        onError: errors.add,
+      );
+      final textSub = t.incomingText.listen(text.add);
+      await t.sendRequest('weather in Tokyo');
+      await messageSub.cancel();
+      await textSub.cancel();
+
+      expect(errors, isEmpty);
+      expect(messages, hasLength(2));
+      expect(messages[0], isA<CreateSurfaceMessage>());
+      final update = messages[1] as UpdateComponentsMessage;
+      expect(update.surfaceId, 's1');
+      expect(update.components.single['city'], 'Tokyo');
+      expect(text.join(), contains('Here is the weather.'));
+      expect(text.join(), contains('Enjoy!'));
+      expect(text.join(), isNot(contains('a2ui-json')));
+      t.dispose();
+    });
+
+    test('adds a rejected block as an error and reads on', () async {
+      const unknownSurface =
+          '{"version":"v0.9","updateComponents":{"surfaceId":"missing",'
+          '"components":[{"id":"root","component":"WeatherWidget",'
+          '"city":"Oslo"}]}}';
+      final t = GenuiXTransport(
+        apiKey: 'test-key',
+        catalog: _weatherCatalog,
+        httpClient: _MockHttpClient(
+          (_) async => _anthropicReply([
+            '<a2ui-json>[$unknownSurface]</a2ui-json> Still here.',
+          ]),
+        ),
+      );
+
+      final messages = <AgentToRendererMessage>[];
+      final errors = <Object>[];
+      final text = <String>[];
+      final messageSub = t.incomingMessages.listen(
+        messages.add,
+        onError: errors.add,
+      );
+      final textSub = t.incomingText.listen(text.add);
+      await t.sendRequest('weather in Oslo');
+      await messageSub.cancel();
+      await textSub.cancel();
+
+      expect(messages, isEmpty);
+      expect(errors.single, isA<A2uiError>());
+      expect(text.join(), contains('Still here.'));
+      t.dispose();
+    });
+
+    Future<List<Object>> secondTurnErrors(SurfaceOperations? operations) async {
+      var turn = 0;
+      final t = GenuiXTransport(
+        apiKey: 'test-key',
+        catalog: _weatherCatalog,
+        surfaceOperations: operations,
+        httpClient: _MockHttpClient(
+          (_) async => _anthropicReply([
+            turn++ == 0
+                ? '<a2ui-json>[$_createWeatherSurface,'
+                      '$_updateWeatherSurface]</a2ui-json>'
+                : '<a2ui-json>[$_updateWeatherSurface]</a2ui-json>',
+          ]),
+        ),
+      );
+      final errors = <Object>[];
+      final sub = t.incomingMessages.listen((_) {}, onError: errors.add);
+      await t.sendRequest('weather in Tokyo');
+      await t.sendRequest('update it');
+      await sub.cancel();
+      t.dispose();
+      return errors;
+    }
+
+    test('rejects updates to surfaces of earlier turns by default', () async {
+      expect(await secondTurnErrors(null), [isA<A2uiError>()]);
+    });
+
+    test('accepts updates to surfaces of earlier turns when allowed', () async {
+      expect(
+        await secondTurnErrors(SurfaceOperations.all(dataModel: false)),
+        isEmpty,
+      );
     });
   });
 
@@ -225,7 +372,7 @@ void main() {
       final t = _transport(
         httpClient: _MockHttpClient((_) async => _response(500, 'error')),
       );
-      await t.sendRequest(ChatMessage.user('hello'));
+      await t.sendRequest('hello');
       expect(t.isLoading.value, isFalse);
       t.dispose();
     });
@@ -251,7 +398,7 @@ void main() {
         httpClient: client,
       );
 
-      await t.sendRequest(ChatMessage.user('   '));
+      await t.sendRequest('   ');
 
       expect(client.lastRequestBody, isNull);
       t.dispose();
@@ -272,7 +419,7 @@ void main() {
 
         // First request — will fail with auth error
         await expectLater(
-          t.sendRequest(ChatMessage.user('first')),
+          t.sendRequest('first'),
           throwsA(isA<GenuiXAuthError>()),
         );
 
@@ -280,7 +427,7 @@ void main() {
 
         // Second request — history should only have the new message
         await expectLater(
-          t.sendRequest(ChatMessage.user('second')),
+          t.sendRequest('second'),
           throwsA(isA<GenuiXAuthError>()),
         );
 
@@ -306,7 +453,7 @@ void main() {
         }),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       expect(captured!.headers['authorization'], 'Bearer sk-test');
@@ -324,7 +471,7 @@ void main() {
         }),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       expect(captured!.url.path, '/v1/chat/completions');
@@ -339,7 +486,7 @@ void main() {
         httpClient: client,
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       expect(client.lastRequestBody, contains('gpt-4o-mini'));
@@ -358,7 +505,7 @@ void main() {
         }),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       expect(captured!.url.host, 'openrouter.ai');
@@ -377,7 +524,7 @@ void main() {
           httpClient: client,
         );
         await expectLater(
-          t.sendRequest(ChatMessage.user('hello')),
+          t.sendRequest('hello'),
           throwsA(isA<GenuiXAuthError>()),
         );
         expect(client.lastRequestBody, contains('createSurface'));
@@ -396,7 +543,7 @@ void main() {
           httpClient: client,
         );
         await expectLater(
-          t.sendRequest(ChatMessage.user('hello')),
+          t.sendRequest('hello'),
           throwsA(isA<GenuiXAuthError>()),
         );
         expect(client.lastRequestBody, contains('deleteSurface'));
@@ -415,10 +562,10 @@ void main() {
           httpClient: client,
         );
         await expectLater(
-          t.sendRequest(ChatMessage.user('hello')),
+          t.sendRequest('hello'),
           throwsA(isA<GenuiXAuthError>()),
         );
-        // createOnly has update:false — genui injects a "DO NOT update" instruction
+        // createOnly has update:false — genui_x injects a "DO NOT update" instruction
         expect(
           client.lastRequestBody,
           contains('DO NOT update or modify surfaces'),
@@ -436,7 +583,7 @@ void main() {
         httpClient: client,
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       expect(client.lastRequestBody, contains('Alice'));
@@ -457,7 +604,7 @@ void main() {
         }),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       expect(captured!.headers['x-api-key'], 'ant-test');
@@ -475,7 +622,7 @@ void main() {
         }),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       expect(captured!.url.path, '/v1/messages');
@@ -490,7 +637,7 @@ void main() {
         httpClient: client,
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       expect(client.lastRequestBody, contains('claude-haiku-4-5-20251001'));
@@ -509,7 +656,7 @@ void main() {
         }),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       expect(captured!.url.host, 'my-proxy.example.com');
@@ -528,7 +675,7 @@ void main() {
         ),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXRateLimitError>()),
       );
       t.dispose();
@@ -558,7 +705,7 @@ void main() {
         }),
       );
 
-      await expectLater(t.sendRequest(ChatMessage.user('hello')), completes);
+      await expectLater(t.sendRequest('hello'), completes);
       expect(calls, 2);
       t.dispose();
     });
@@ -577,7 +724,7 @@ void main() {
         ),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXRateLimitError>()),
       );
       t.dispose();
@@ -596,7 +743,7 @@ void main() {
         }),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       expect(captured!.headers['x-goog-api-key'], 'goog-test');
@@ -615,7 +762,7 @@ void main() {
         }),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       expect(
@@ -634,7 +781,7 @@ void main() {
         httpClient: client,
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       expect(client.lastRequestBody, contains('"role":"user"'));
@@ -651,7 +798,7 @@ void main() {
         httpClient: client,
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello world')),
+        t.sendRequest('hello world'),
         throwsA(isA<GenuiXAuthError>()),
       );
       final body = client.lastRequestBody!;
@@ -677,7 +824,7 @@ void main() {
         }),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       expect(captured!.url.host, 'my-vertex-proxy.example.com');
@@ -700,7 +847,7 @@ void main() {
 
       final chunks = <String>[];
       final sub = t.incomingText.listen(chunks.add);
-      await t.sendRequest(ChatMessage.user('hello'));
+      await t.sendRequest('hello');
       await sub.cancel();
 
       expect(chunks, contains('Hi'));
@@ -719,7 +866,7 @@ void main() {
         }),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       expect(captured!.url.host, 'localhost');
@@ -738,7 +885,7 @@ void main() {
         }),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       expect(captured!.headers['authorization'], 'Bearer ollama');
@@ -749,7 +896,7 @@ void main() {
       final client = _CapturingHttpClient();
       final t = GenuiXTransport.ollama(catalog: _catalog, httpClient: client);
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       expect(client.lastRequestBody, contains('llama3.2'));
@@ -769,7 +916,7 @@ void main() {
         }),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       expect(captured!.url.host, '192.168.1.50');
@@ -785,7 +932,7 @@ void main() {
         httpClient: client,
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       expect(client.lastRequestBody, contains('"response_format"'));
@@ -803,7 +950,7 @@ void main() {
         httpClient: client,
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       expect(client.lastRequestBody, isNot(contains('response_format')));
@@ -819,7 +966,7 @@ void main() {
         httpClient: client,
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       expect(client.lastRequestBody, contains('"response_format"'));
@@ -841,7 +988,7 @@ void main() {
           httpClient: client,
         );
         await expectLater(
-          t.sendRequest(ChatMessage.user('hello')),
+          t.sendRequest('hello'),
           throwsA(isA<GenuiXAuthError>()),
         );
         // User override wins; the json_object default is not present.
@@ -861,7 +1008,7 @@ void main() {
         httpClient: _MockHttpClient((_) async => _response(401, 'stop')),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       t.dispose();
@@ -875,7 +1022,7 @@ void main() {
         httpClient: _MockHttpClient((_) async => _response(401, 'stop')),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       t.dispose();
@@ -890,7 +1037,7 @@ void main() {
         httpClient: _MockHttpClient((_) async => _response(401, 'stop')),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       t.dispose();
@@ -905,7 +1052,7 @@ void main() {
         httpClient: _MockHttpClient((_) async => _response(401, 'stop')),
       );
       await expectLater(
-        t.sendRequest(ChatMessage.user('hello')),
+        t.sendRequest('hello'),
         throwsA(isA<GenuiXAuthError>()),
       );
       t.dispose();
@@ -930,7 +1077,7 @@ void main() {
         onError: streamErrors.add,
       );
 
-      await t.sendRequest(ChatMessage.user('hello'));
+      await t.sendRequest('hello');
       await Future<void>.delayed(Duration.zero);
 
       expect(streamErrors, isEmpty);

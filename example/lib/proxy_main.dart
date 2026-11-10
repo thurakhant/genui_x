@@ -10,10 +10,12 @@
 //     --dart-define=PROXY_API_KEY=your-key \
 //     --dart-define=PROXY_MODEL=gpt-4o
 
+import 'package:a2ui_flutter/a2ui_flutter.dart';
 import 'package:flutter/material.dart';
-import 'package:genui/genui.dart';
 import 'package:genui_x/genui_x.dart';
 import 'package:json_schema_builder/json_schema_builder.dart';
+
+import 'src/surface_renderer.dart';
 
 void main() {
   const baseUrl = String.fromEnvironment('PROXY_BASE_URL');
@@ -76,8 +78,7 @@ class ProxyChatPage extends StatefulWidget {
 
 class _ProxyChatPageState extends State<ProxyChatPage> {
   late final GenuiXTransport _transport;
-  late final SurfaceController _controller;
-  late final Conversation _conversation;
+  late final SurfaceRenderer _renderer;
 
   @override
   void initState() {
@@ -97,25 +98,25 @@ class _ProxyChatPageState extends State<ProxyChatPage> {
     );
     // ────────────────────────────────────────────────────────────────────
 
-    _controller = SurfaceController(catalogs: [weatherCatalog]);
-    _conversation = Conversation(
-      controller: _controller,
+    _renderer = SurfaceRenderer(
       transport: _transport,
+      catalogs: [weatherCatalog],
     );
   }
 
   @override
   void dispose() {
-    _conversation.dispose();
-    _controller.dispose();
+    _renderer.dispose();
     _transport.dispose();
     super.dispose();
   }
 
   Future<void> _sendSample() async {
-    await _conversation.sendRequest(
-      ChatMessage.user('Show weather for Tokyo: 28°C, Sunny.'),
-    );
+    try {
+      await _transport.sendRequest('Show weather for Tokyo: 28°C, Sunny.');
+    } on Exception catch (error) {
+      debugPrint('[proxy] $error');
+    }
   }
 
   @override
@@ -149,14 +150,15 @@ class _ProxyChatPageState extends State<ProxyChatPage> {
             ),
             const SizedBox(height: 16),
             ValueListenableBuilder(
-              valueListenable: _conversation.state,
-              builder: (context, state, _) {
-                if (state.surfaces.isEmpty) return const SizedBox.shrink();
+              valueListenable: _renderer.surfaces,
+              builder: (context, surfaces, _) {
+                if (surfaces.isEmpty) return const SizedBox.shrink();
                 return Expanded(
                   child: ListView.builder(
-                    itemCount: state.surfaces.length,
-                    itemBuilder: (context, i) => Surface(
-                      surfaceContext: _controller.contextFor(state.surfaces[i]),
+                    itemCount: surfaces.length,
+                    itemBuilder: (context, i) => A2uiSurface(
+                      key: ObjectKey(surfaces[i]),
+                      surface: surfaces[i],
                     ),
                   ),
                 );
@@ -171,11 +173,12 @@ class _ProxyChatPageState extends State<ProxyChatPage> {
 
 // ── Catalog ──────────────────────────────────────────────────────────────────
 
-final weatherCatalog = Catalog(
-  [
-    CatalogItem(
+final weatherCatalog = CatalogImplementation(
+  id: 'proxy.example.catalog',
+  components: [
+    ComponentImplementation(
       name: 'WeatherWidget',
-      dataSchema: S.object(
+      schema: S.object(
         description: 'Displays current weather for a city.',
         properties: {
           'city': S.string(description: 'City name.'),
@@ -184,17 +187,15 @@ final weatherCatalog = Catalog(
         },
         required: ['city', 'temperature', 'condition'],
       ),
-      widgetBuilder: (ctx) {
-        final data = ctx.data as Map<String, dynamic>;
+      builder: (context, node, props, buildChild) {
         return _WeatherCard(
-          city: data['city'] as String,
-          temperature: (data['temperature'] as num).toDouble(),
-          condition: data['condition'] as String,
+          city: props.string('city') ?? '',
+          temperature: props.number('temperature') ?? 0,
+          condition: props.string('condition') ?? '',
         );
       },
     ),
   ],
-  catalogId: 'proxy.example.catalog',
 );
 
 class _WeatherCard extends StatelessWidget {

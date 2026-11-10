@@ -5,7 +5,7 @@
 [![likes](https://img.shields.io/pub/likes/genui_x.svg)](https://pub.dev/packages/genui_x/score)
 [![CI](https://github.com/thurakhant/genui_x/actions/workflows/ci.yml/badge.svg)](https://github.com/thurakhant/genui_x/actions/workflows/ci.yml)
 
-> **The missing backend for [Google's genui](https://pub.dev/packages/genui) framework.** One `Transport`, every major LLM — Anthropic Claude, OpenAI, Google Gemini, local Ollama, or any OpenAI-compatible proxy.
+> **The missing backend for [A2UI](https://a2ui.org/) generative UI in Flutter.** One transport, every major LLM — Anthropic Claude, OpenAI, Google Gemini, local Ollama, or any OpenAI-compatible proxy.
 
 **▶️ [Try it live](https://thurakhant.github.io/genui_x/)** — paste your own Anthropic API key and watch a prompt stream into a rendered widget. Nothing to install; your key never leaves the browser tab.
 
@@ -24,7 +24,7 @@ final transport = GenuiXTransport.anthropic(  // or .openai() / .gemini() / .oll
 );
 ```
 
-`genui` defines *what* the AI can render. `genui_x` connects it to *who* generates it.
+[`a2ui_flutter`](https://pub.dev/packages/a2ui_flutter) defines *what* the AI can render. `genui_x` connects it to *who* generates it.
 
 ## Provider matrix
 
@@ -40,23 +40,23 @@ All providers share the same retry-on-429, cancel, `clearHistory`, `isLoading`, 
 
 ---
 
-## How genui and genui_x fit together
+## How A2UI and genui_x fit together
 
 ```
 Your App
   │
-  ├── genui          ← UI engine: renders widgets, manages surfaces
-  │     Catalog      ← your widget definitions
-  │     Conversation ← drives the chat loop
-  │     Surface      ← renders AI-generated UI in your widget tree
+  ├── a2ui_flutter            ← UI engine: renders widgets, manages surfaces
+  │     CatalogImplementation ← your widget definitions
+  │     MessageProcessor      ← applies A2UI messages to surfaces
+  │     A2uiSurface           ← renders AI-generated UI in your widget tree
   │
-  └── genui_x        ← backend wire: HTTP, streaming, auth
-        GenuiXTransport ← implements genui's Transport interface
+  └── genui_x                 ← backend wire: HTTP, streaming, auth
+        GenuiXTransport       ← prompts any LLM and streams its text and A2UI messages
 ```
 
-**genui** handles everything on the UI side — defining widgets, parsing A2UI JSON, and rendering surfaces. It ships no HTTP client.
+**a2ui_flutter** (with [`a2ui_core`](https://pub.dev/packages/a2ui_core)) handles everything on the UI side — defining widgets, applying A2UI messages, and rendering surfaces. It ships no HTTP client.
 
-**genui_x** provides the missing piece: a `Transport` that calls any AI backend, streams the response, and feeds it back into genui's rendering pipeline.
+**genui_x** provides the missing piece: a transport that calls any AI backend, prompts it with your catalog through [`a2ui_agent`](https://pub.dev/packages/a2ui_agent), streams the response, and hands the parsed A2UI messages to your renderer.
 
 ---
 
@@ -67,20 +67,24 @@ Your App
 ```yaml
 # pubspec.yaml
 dependencies:
-  genui: ^0.9.2
+  a2ui_core: ^0.6.0
+  a2ui_flutter: ^0.2.0
+  json_schema_builder: ^0.1.7
   genui_x: ^0.0.14
 ```
 
 ### 2. Create your catalog
 
 ```dart
-import 'package:genui/genui.dart';
+import 'package:a2ui_flutter/a2ui_flutter.dart';
+import 'package:json_schema_builder/json_schema_builder.dart';
 
-final myCatalog = Catalog(
-  [
-    CatalogItem(
+final myCatalog = CatalogImplementation(
+  id: 'com.example.my_catalog',
+  components: [
+    ComponentImplementation(
       name: 'WeatherWidget',
-      dataSchema: S.object(
+      schema: S.object(
         description: 'Shows weather for a city.',
         properties: {
           'city': S.string(description: 'City name'),
@@ -89,24 +93,23 @@ final myCatalog = Catalog(
         },
         required: ['city', 'temperature', 'condition'],
       ),
-      widgetBuilder: (ctx) {
-        final data = ctx.data as Map<String, dynamic>;
+      builder: (context, node, props, buildChild) {
         return WeatherWidget(
-          city: data['city'] as String,
-          temperature: (data['temperature'] as num).toDouble(),
-          condition: data['condition'] as String,
+          city: props.string('city') ?? '',
+          temperature: props.number('temperature') ?? 0,
+          condition: props.string('condition') ?? '',
         );
       },
     ),
   ],
-  catalogId: 'com.example.my_catalog',
 );
 ```
 
 ### 3. Wire up the conversation
 
 ```dart
-import 'package:genui/genui.dart';
+import 'package:a2ui_core/a2ui_core.dart';
+import 'package:a2ui_flutter/a2ui_flutter.dart';
 import 'package:genui_x/genui_x.dart';
 
 final transport = GenuiXTransport(
@@ -115,24 +118,38 @@ final transport = GenuiXTransport(
   // model: 'claude-sonnet-4-6',   // Optional — default is claude-haiku-4-5
 );
 
-final controller = SurfaceController(catalogs: [myCatalog]);
-
-final conversation = Conversation(
-  controller: controller,
-  transport: transport,
+final processor = MessageProcessor<ComponentImplementation>(
+  catalogs: [myCatalog],
+  validationConfig: ValidationConfig.relaxed, // a surface streams in over several messages
+  reportErrorsOnly: true,
 );
 
+final surfaces = ValueNotifier<List<SurfaceModel<ComponentImplementation>>>(const []);
+processor.model.onSurfaceCreated.subscribe((surface) {
+  surfaces.value = [...surfaces.value, surface];
+});
+
+// Apply the A2UI messages the model writes. A block the model got wrong
+// arrives as an error.
+transport.incomingMessages.listen(
+  (message) => processor.processMessages(AgentToRendererMessagePayload.of(message)),
+  onError: (Object error) => debugPrint('A2UI error: $error'),
+);
+// The model's text outside its A2UI blocks.
+transport.incomingText.listen((text) => debugPrint(text));
+
 // Send a message
-await conversation.sendRequest(ChatMessage.user('What is the weather in Tokyo?'));
+await transport.sendRequest('What is the weather in Tokyo?');
 
 // Render active surfaces in your widget tree
 ValueListenableBuilder(
-  valueListenable: conversation.state,
-  builder: (context, state, _) {
+  valueListenable: surfaces,
+  builder: (context, surfaces, _) {
     return Column(
-      children: state.surfaces.map((id) =>
-        Surface(surfaceContext: controller.contextFor(id)),
-      ).toList(),
+      children: [
+        for (final surface in surfaces)
+          A2uiSurface(key: ObjectKey(surface), surface: surface),
+      ],
     );
   },
 );
@@ -163,9 +180,10 @@ final transport = GenuiXTransport.openai(
 );
 ```
 
-Set `enforceJsonMode: true` to pin OpenAI's response to a JSON object, which
-improves A2UI compliance on smaller models. Has no effect on Anthropic or
-Gemini transports.
+`enforceJsonMode: true` pins OpenAI's response to a JSON object. The model
+writes A2UI as `<a2ui-json>` blocks inside its text, which a reply pinned to
+one JSON object cannot hold, so leave it off for generative UI. Has no effect
+on Anthropic or Gemini transports.
 
 ### Google Gemini
 
@@ -189,7 +207,6 @@ final transport = GenuiXTransport.ollama(
   catalog: myCatalog,
   // model: 'llama3.2',                  // optional — default
   // baseUrl: 'http://localhost:11434',  // optional — default
-  // enforceJsonMode: true,              // recommended for stricter A2UI output
 );
 ```
 
@@ -231,8 +248,6 @@ By default the AI can only **create** new surfaces. Use `surfaceOperations` to
 allow updates or deletion:
 
 ```dart
-import 'package:genui/genui.dart'; // for SurfaceOperations
-
 final transport = GenuiXTransport(
   apiKey: 'your-key',
   catalog: myCatalog,
@@ -362,7 +377,7 @@ flutter run -t lib/ollama_main.dart \
 
 - **Streaming only** — non-streaming mode is not supported.
 - **Flutter Web** — direct API calls to Anthropic or OpenAI will fail due to CORS. Use `baseUrl` to route through a backend proxy.
-- **genui alpha** — genui itself is in early development; breaking changes may occur.
+- **A2UI SDKs are pre-1.0** — `a2ui_core`, `a2ui_flutter` and `a2ui_agent` are in early development; breaking changes may occur.
 
 ---
 
@@ -370,5 +385,5 @@ flutter run -t lib/ollama_main.dart \
 
 - **HTTP 200 but no UI yet** — `200` means the stream opened. UI appears only after valid A2UI chunks (`createSurface` + `updateComponents`) are parsed.
 - **Proxy SSE format differences** — `genui_x` accepts both `data: {...}` and `data:{...}` SSE line formats used by OpenAI-compatible proxies.
-- **Catalog ID mismatch** — ensure the model emits the same `catalogId` that your `SurfaceController` registered.
-- **Component props shape** — some models emit props flat while others wrap under `data`; make your `widgetBuilder` tolerate both for resilience.
+- **Catalog ID mismatch** — ensure the model emits the same `catalogId` that your `MessageProcessor` registered.
+- **Component props shape** — properties go flat next to `id` and `component`. A component that wraps them under `data` fails the catalog schema and arrives on `incomingMessages` as an error.
